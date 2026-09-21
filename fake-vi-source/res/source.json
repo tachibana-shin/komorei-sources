@@ -1,0 +1,13 @@
+{
+	"info": {
+		"id": "vi.fake-source",
+		"name": "Komorei Fake (VI)",
+		"version": 1,
+		"url": "https://komorei.example",
+		"contentRating": 0,
+		"languages": [
+			"vi",
+			"en"
+		]
+	}
+}

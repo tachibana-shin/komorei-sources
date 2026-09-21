@@ -1,0 +1,55 @@
+name: Build source list
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "sources/**"
+      - "templates/**"
+      - ".github/workflows/build.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            sources/**/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('sources/**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install komorei CLI
+        run: |
+          git clone --depth 1 https://github.com/komorei-sdk/komorei-sdk.git /tmp/komorei-sdk
+          cargo install --path /tmp/komorei-sdk/crates/cli --locked
+
+      - name: Build sources
+        run: komorei repo build --root . --output public
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4.7.2
+        with:
+          branch: gh-pages
+          folder: public
+          git-config-name: GitHub Actions
+          git-config-email: github-actions[bot]@users.noreply.github.com
+          commit-message: Update source list
+          single-commit: true

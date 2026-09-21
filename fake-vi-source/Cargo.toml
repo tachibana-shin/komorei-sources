@@ -1,0 +1,23 @@
+[package]
+name = "fake-vi-source"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+komorei = { path = "../../komorei-sdk/crates/lib" }
+
+[dev-dependencies]
+komorei = { path = "../../komorei-sdk/crates/lib", features = ["test"] }
+komorei-test = { path = "../../komorei-sdk/crates/test-macro" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+strip = true
+lto = true

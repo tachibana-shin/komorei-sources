@@ -1,0 +1,58 @@
+name: Check PR
+on:
+  pull_request:
+    paths:
+      - "sources/**"
+      - "templates/**"
+      - ".github/workflows/pr.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify-sources:
+    name: Verify sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install komorei CLI
+        run: |
+          git clone --depth 1 https://github.com/komorei-sdk/komorei-sdk.git /tmp/komorei-sdk
+          cargo install --path /tmp/komorei-sdk/crates/cli --locked
+
+      - name: Build and verify sources
+        run: komorei repo verify --root .
+
+  rust-lint:
+    name: Rust formatting and Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+
+      - name: Lint sources
+        run: |
+          set -uo pipefail
+          failed=0
+          for crate in sources/*; do
+            [[ -f "$crate/Cargo.toml" ]] || continue
+            echo "::group::Linting $crate"
+            (cd "$crate" && cargo fmt --check) || failed=1
+            (cd "$crate" && cargo clippy --target wasm32-unknown-unknown -- -D warnings) || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed
