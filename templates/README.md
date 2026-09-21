@@ -13,7 +13,7 @@ komorei init templates/<name> --name "<Name>" --url https://example.com --langua
 Create a source that uses a template:
 
 ```sh
-komorei init sources/vi.<id> --name "<Name>" --url https://... --languages vi --template --template-name <name>
+komorei init <id> --name "<Name>" --url https://... --languages vi --template --template-name <name>
 ```
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for when a template should be created.

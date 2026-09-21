@@ -4,15 +4,15 @@ extern crate alloc;
 use alloc::{borrow::Cow, format, string::String, vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use komorei::{
-	imports::defaults::{defaults_get, defaults_set, DefaultValue},
+	Anime, AnimePageResult, AnimeSeason, AnimeStatus, AnimeWithEpisode, ButtonSetting,
+	CategoryLink, DeepLinkHandler, DeepLinkResult, DynamicFilters, DynamicListings,
+	DynamicSettings, Episode, Filter, FilterItem, FilterValue, Home, HomeComponent,
+	HomeComponentValue, HomeLayout, Link, LinkValue, Listing, ListingKind, ListingProvider,
+	MigrationHandler, MultiSelectFilter, NotificationHandler, RangeFilter, RangeLong, Result,
+	SegmentDataInterceptor, SegmentUrlInterceptor, SelectFilter, Setting, SortFilter, Source,
+	StreamData, StreamInfo, StreamType, SubtitleInfo, TextFilter, ToggleSetting,
+	imports::defaults::{DefaultValue, defaults_get, defaults_set},
 	prelude::*,
-	Anime, AnimePageResult, AnimeSeason, AnimeStatus, AnimeWithEpisode, CategoryLink,
-	DeepLinkHandler, DeepLinkResult, DynamicFilters, DynamicListings, DynamicSettings, Episode,
-	Filter, FilterItem, FilterValue, Home, HomeComponent, HomeComponentValue, HomeLayout, Link, LinkValue,
-	Listing, ListingKind, ListingProvider, MigrationHandler, MultiSelectFilter,
-	NotificationHandler, RangeFilter, RangeLong, Result, SelectFilter, Setting, SortFilter,
-	StreamData, StreamInfo, StreamType, SubtitleInfo, TextFilter, ToggleSetting, Source,
-	SegmentDataInterceptor, SegmentUrlInterceptor, ButtonSetting,
 };
 
 use core::cmp::Ordering;
@@ -92,7 +92,10 @@ const CATALOG: &[Entry] = &[
 		featured: true,
 		next_air: Some("Tập 11 phát sóng lúc 22:30 Thứ Bảy ngày 12/10"),
 		quality_tag: "FHD",
-		seasons: &[("solo_leveling", "Phần 1: Thức Tỉnh"), ("solo_leveling_s2", "Phần 2: Arise")],
+		seasons: &[
+			("solo_leveling", "Phần 1: Thức Tỉnh"),
+			("solo_leveling_s2", "Phần 2: Arise"),
+		],
 		source_url: "https://komorei.example/anime/solo-leveling-s2",
 	},
 	Entry {
@@ -138,7 +141,10 @@ const CATALOG: &[Entry] = &[
 		featured: true,
 		next_air: Some("Tập tiếp theo (Tập 13) phát lúc 23:00 Thứ Năm hàng tuần"),
 		quality_tag: "FHD",
-		seasons: &[("dandadan", "Phần 1: Chạm Trán"), ("dandadan_s2", "Phần 2: Quỷ Ác Tà")],
+		seasons: &[
+			("dandadan", "Phần 1: Chạm Trán"),
+			("dandadan_s2", "Phần 2: Quỷ Ác Tà"),
+		],
 		source_url: "https://komorei.example/anime/dandadan",
 	},
 	Entry {
@@ -309,7 +315,10 @@ const CATALOG: &[Entry] = &[
 		featured: false,
 		next_air: None,
 		quality_tag: "FHD",
-		seasons: &[("solo_leveling", "Phần 1: Thức Tỉnh"), ("solo_leveling_s2", "Phần 2: Arise")],
+		seasons: &[
+			("solo_leveling", "Phần 1: Thức Tỉnh"),
+			("solo_leveling_s2", "Phần 2: Arise"),
+		],
 		source_url: "https://komorei.example/anime/solo-leveling",
 	},
 	Entry {
@@ -494,10 +503,7 @@ const CATALOG: &[Entry] = &[
 		featured: false,
 		next_air: None,
 		quality_tag: "FHD",
-		seasons: &[
-			("mha_1", "Mùa 1"),
-			("mha_s7", "Mùa 7: Final"),
-		],
+		seasons: &[("mha_1", "Mùa 1"), ("mha_s7", "Mùa 7: Final")],
 		source_url: "https://komorei.example/anime/mha-s7",
 	},
 	Entry {
@@ -523,7 +529,7 @@ const CATALOG: &[Entry] = &[
 		seasons: &[("dress_up_darling", "Mùa 1")],
 		source_url: "https://komorei.example/anime/dress-up-darling",
 	},
-	// ── Entries covering the remaining genres (Harem / Học Đường / Mecha) ──
+	// ── Entries covering the remaining genres (Harem / "Học Đường" / Mecha) ──
 	Entry {
 		key: "konosuba_s3",
 		title: "KonoSuba: Phép Thuật Ngon Lành 3",
@@ -686,19 +692,17 @@ fn generate_episodes(entry: &Entry, season_key: &str) -> Vec<Episode> {
 	let count = core::cmp::min(entry.episode_count, 64); // cap for mega-series (Conan/One Piece)
 	let now = 1_700_000_000_i64; // fixed timestamp for test determinism
 	(1..=count)
-		.map(|i| {
-			Episode {
-				key: format!("{season_key}_ep_{i}"),
-				episode_number: format!("{i}"),
-				title: Some(format!("Tập {i} - {}", entry.title)),
-				thumbnail: Some(String::from(entry.cover)),
-				date_uploaded: Some(now - (count - i) as i64 * 86_400),
-				duration_seconds: Some(1440),
-				quality: Some(String::from(entry.quality_tag)),
-				url: None,
-				language: Some(String::from("vi")),
-				locked: false,
-			}
+		.map(|i| Episode {
+			key: format!("{season_key}_ep_{i}"),
+			episode_number: format!("{i}"),
+			title: Some(format!("Tập {i} - {}", entry.title)),
+			thumbnail: Some(String::from(entry.cover)),
+			date_uploaded: Some(now - (count - i) as i64 * 86_400),
+			duration_seconds: Some(1440),
+			quality: Some(String::from(entry.quality_tag)),
+			url: None,
+			language: Some(String::from("vi")),
+			locked: false,
 		})
 		.collect()
 }
@@ -707,8 +711,7 @@ fn matches_filter(anime: &Anime, filters: &[FilterValue]) -> bool {
 	for f in filters {
 		match f {
 			FilterValue::MultiSelect { id, included, .. } if id == "genres" => {
-				if !included.is_empty()
-					&& !anime.genres.iter().any(|g| included.contains(&g.name))
+				if !included.is_empty() && !anime.genres.iter().any(|g| included.contains(&g.name))
 				{
 					return false;
 				}
@@ -723,7 +726,11 @@ fn matches_filter(anime: &Anime, filters: &[FilterValue]) -> bool {
 					return false;
 				}
 			}
-			FilterValue::Sort { id, index, ascending } if id == "sort" => {
+			FilterValue::Sort {
+				id,
+				index,
+				ascending,
+			} if id == "sort" => {
 				// sorting is handled separately; presence here is fine
 				let _ = (index, ascending);
 			}
@@ -735,13 +742,19 @@ fn matches_filter(anime: &Anime, filters: &[FilterValue]) -> bool {
 
 fn sort_entries(entries: &mut Vec<Anime>, filters: &[FilterValue]) {
 	let sort = filters.iter().find_map(|f| match f {
-		FilterValue::Sort { index, ascending, .. } => Some((*index, *ascending)),
+		FilterValue::Sort {
+			index, ascending, ..
+		} => Some((*index, *ascending)),
 		_ => None,
 	});
 	if let Some((idx, asc)) = sort {
 		entries.sort_by(|a, b| {
 			let ord = match idx {
-				0 => b.rating.unwrap_or(0.0).partial_cmp(&a.rating.unwrap_or(0.0)).unwrap_or(Ordering::Equal),
+				0 => b
+					.rating
+					.unwrap_or(0.0)
+					.partial_cmp(&a.rating.unwrap_or(0.0))
+					.unwrap_or(Ordering::Equal),
 				1 => b.views.cmp(&a.views),
 				_ => a.title.cmp(&b.title),
 			};
@@ -755,7 +768,9 @@ fn sort_entries(entries: &mut Vec<Anime>, filters: &[FilterValue]) {
 struct FakeViSource;
 
 impl Source for FakeViSource {
-	fn new() -> Self { Self }
+	fn new() -> Self {
+		Self
+	}
 
 	fn get_search_anime_list(
 		&self,
@@ -783,7 +798,11 @@ impl Source for FakeViSource {
 		let total = results.len();
 		let start = ((page - 1) * PAGE_SIZE) as usize;
 		let end = core::cmp::min(start + PAGE_SIZE as usize, total);
-		let page_entries = if start < total { results[start..end].to_vec() } else { Vec::new() };
+		let page_entries = if start < total {
+			results[start..end].to_vec()
+		} else {
+			Vec::new()
+		};
 		let has_next = end < total;
 
 		Ok(AnimePageResult {
@@ -840,7 +859,12 @@ impl Source for FakeViSource {
 		Ok(servers)
 	}
 
-	fn get_stream(&self, _anime: Anime, _episode: Episode, stream: StreamInfo) -> Result<StreamData> {
+	fn get_stream(
+		&self,
+		_anime: Anime,
+		_episode: Episode,
+		stream: StreamInfo,
+	) -> Result<StreamData> {
 		match stream.key.as_str() {
 			"mp4_720" => Ok(StreamData {
 				url: String::from(SAMPLE_MP4_720),
@@ -852,7 +876,10 @@ impl Source for FakeViSource {
 					h
 				},
 				subtitles: Vec::new(),
-				intro: Some(RangeLong { start_ms: 0, end_ms: 90_000 }),
+				intro: Some(RangeLong {
+					start_ms: 0,
+					end_ms: 90_000,
+				}),
 				outro: None,
 			}),
 			"mp4_fhd" => Ok(StreamData {
@@ -865,8 +892,14 @@ impl Source for FakeViSource {
 					h
 				},
 				subtitles: Vec::new(),
-				intro: Some(RangeLong { start_ms: 0, end_ms: 90_000 }),
-				outro: Some(RangeLong { start_ms: 480_000, end_ms: 540_000 }),
+				intro: Some(RangeLong {
+					start_ms: 0,
+					end_ms: 90_000,
+				}),
+				outro: Some(RangeLong {
+					start_ms: 480_000,
+					end_ms: 540_000,
+				}),
 			}),
 			_ => Ok(StreamData {
 				url: String::from(SAMPLE_HLS),
@@ -883,8 +916,14 @@ impl Source for FakeViSource {
 					label: Some(String::from("Tiếng Việt")),
 					headers: komorei::HashMap::new(),
 				}],
-				intro: Some(RangeLong { start_ms: 0, end_ms: 90_000 }),
-				outro: Some(RangeLong { start_ms: 480_000, end_ms: 540_000 }),
+				intro: Some(RangeLong {
+					start_ms: 0,
+					end_ms: 90_000,
+				}),
+				outro: Some(RangeLong {
+					start_ms: 480_000,
+					end_ms: 540_000,
+				}),
 			}),
 		}
 	}
@@ -895,11 +934,13 @@ impl Source for FakeViSource {
 impl ListingProvider for FakeViSource {
 	fn get_anime_list(&self, listing: Listing, page: i32) -> Result<AnimePageResult> {
 		let entries: Vec<Anime> = match listing.id.as_str() {
-			"ongoing" => CATALOG.iter()
+			"ongoing" => CATALOG
+				.iter()
 				.filter(|e| e.status == AnimeStatus::Ongoing)
 				.map(|e| build_lite(e))
 				.collect(),
-			"completed" => CATALOG.iter()
+			"completed" => CATALOG
+				.iter()
 				.filter(|e| e.status == AnimeStatus::Completed)
 				.map(|e| build_lite(e))
 				.collect(),
@@ -913,7 +954,11 @@ impl ListingProvider for FakeViSource {
 		let total = entries.len();
 		let start = ((page - 1) * PAGE_SIZE) as usize;
 		let end = core::cmp::min(start + PAGE_SIZE as usize, total);
-		let page_entries = if start < total { entries[start..end].to_vec() } else { Vec::new() };
+		let page_entries = if start < total {
+			entries[start..end].to_vec()
+		} else {
+			Vec::new()
+		};
 		Ok(AnimePageResult {
 			entries: page_entries,
 			has_next_page: end < total,
@@ -925,7 +970,8 @@ impl ListingProvider for FakeViSource {
 
 impl Home for FakeViSource {
 	fn get_home(&self) -> Result<HomeLayout> {
-		let featured: Vec<Anime> = CATALOG.iter()
+		let featured: Vec<Anime> = CATALOG
+			.iter()
 			.filter(|e| e.featured)
 			.map(|e| build_anime(e))
 			.collect();
@@ -934,7 +980,10 @@ impl Home for FakeViSource {
 			v.sort_by(|a, b| b.views.cmp(&a.views));
 			v
 		};
-		let hot: Vec<Link> = by_views.iter().cloned().take(8)
+		let hot: Vec<Link> = by_views
+			.iter()
+			.cloned()
+			.take(8)
 			.map(|a| Link {
 				title: a.title.clone(),
 				subtitle: a.current_episode.clone(),
@@ -942,7 +991,10 @@ impl Home for FakeViSource {
 				value: Some(LinkValue::Anime(a)),
 			})
 			.collect();
-		let popular: Vec<Link> = by_views.iter().cloned().take(12)
+		let popular: Vec<Link> = by_views
+			.iter()
+			.cloned()
+			.take(12)
 			.map(|a| Link {
 				title: a.title.clone(),
 				subtitle: a.current_episode.clone(),
@@ -950,28 +1002,39 @@ impl Home for FakeViSource {
 				value: Some(LinkValue::Anime(a)),
 			})
 			.collect();
-		let latest_episodes: Vec<AnimeWithEpisode> = CATALOG.iter().take(10).map(|e| {
-			AnimeWithEpisode {
-				anime: build_lite(e),
-				episode: Episode {
-					key: format!("{}_latest", e.key),
-					// Episode number as a bare digit ("10" not "Tập 10") — the app
-					// prefixes its own localized "Tập %1$s" label. Movies with
-					// no number in current_episode ("Full") fall back to "1".
-					episode_number: {
-						let n: String = e.current_episode.split('/').next().unwrap_or("1")
-							.chars().filter(|c| c.is_ascii_digit()).collect();
-						if n.is_empty() { String::from("1") } else { n }
+		let latest_episodes: Vec<AnimeWithEpisode> = CATALOG
+			.iter()
+			.take(10)
+			.map(|e| {
+				AnimeWithEpisode {
+					anime: build_lite(e),
+					episode: Episode {
+						key: format!("{}_latest", e.key),
+						// Episode number as a bare digit ("10" not "Tập 10") — the app
+						// prefixes its own localized "Tập %1$s" label. Movies with
+						// no number in current_episode ("Full") fall back to "1".
+						episode_number: {
+							let n: String = e
+								.current_episode
+								.split('/')
+								.next()
+								.unwrap_or("1")
+								.chars()
+								.filter(|c| c.is_ascii_digit())
+								.collect();
+							if n.is_empty() { String::from("1") } else { n }
+						},
+						title: Some(String::from(e.title)),
+						// epoch MILLIS (the app reads it via Instant.ofEpochMilli)
+						date_uploaded: Some(1_700_000_000_000_i64),
+						..Default::default()
 					},
-					title: Some(String::from(e.title)),
-					// epoch MILLIS (the app reads it via Instant.ofEpochMilli)
-					date_uploaded: Some(1_700_000_000_000_i64),
-					..Default::default()
-				},
-			}
-		}).collect();
+				}
+			})
+			.collect();
 		// ── ImageScroller: banner images for featured anime ──
-		let image_links: Vec<Link> = featured.iter()
+		let image_links: Vec<Link> = featured
+			.iter()
 			.map(|a| Link {
 				title: a.title.clone(),
 				subtitle: None,
@@ -985,19 +1048,31 @@ impl Home for FakeViSource {
 				title: String::from("Xem toàn bộ Mới cập nhật"),
 				subtitle: Some(String::from("Danh sách \"Mới nhất\" của nguồn")),
 				image_url: None,
-				value: Some(LinkValue::Listing(Listing { id: String::from("latest"), name: String::from("Mới nhất"), kind: ListingKind::List })),
+				value: Some(LinkValue::Listing(Listing {
+					id: String::from("latest"),
+					name: String::from("Mới nhất"),
+					kind: ListingKind::List,
+				})),
 			},
 			Link {
 				title: String::from("Phim đang phát sóng"),
 				subtitle: Some(String::from("Đang phát")),
 				image_url: None,
-				value: Some(LinkValue::Listing(Listing { id: String::from("ongoing"), name: String::from("Đang phát"), kind: ListingKind::List })),
+				value: Some(LinkValue::Listing(Listing {
+					id: String::from("ongoing"),
+					name: String::from("Đang phát"),
+					kind: ListingKind::List,
+				})),
 			},
 			Link {
 				title: String::from("Phim đã hoàn thành"),
 				subtitle: Some(String::from("Hoàn thành")),
 				image_url: None,
-				value: Some(LinkValue::Listing(Listing { id: String::from("completed"), name: String::from("Hoàn thành"), kind: ListingKind::List })),
+				value: Some(LinkValue::Listing(Listing {
+					id: String::from("completed"),
+					name: String::from("Hoàn thành"),
+					kind: ListingKind::List,
+				})),
 			},
 			Link {
 				title: String::from("Trang nguồn Komorei"),
@@ -1035,7 +1110,11 @@ impl Home for FakeViSource {
 					subtitle: None,
 					value: HomeComponentValue::Scroller {
 						entries: hot,
-						listing: Some(Listing { id: String::from("hot"), name: String::from("Đang hot"), kind: ListingKind::List }),
+						listing: Some(Listing {
+							id: String::from("hot"),
+							name: String::from("Đang hot"),
+							kind: ListingKind::List,
+						}),
 					},
 				},
 				// 4. AnimeEpisodeList — recent updates
@@ -1045,7 +1124,11 @@ impl Home for FakeViSource {
 					value: HomeComponentValue::AnimeEpisodeList {
 						page_size: Some(4),
 						entries: latest_episodes,
-						listing: Some(Listing { id: String::from("latest"), name: String::from("Mới nhất"), kind: ListingKind::List }),
+						listing: Some(Listing {
+							id: String::from("latest"),
+							name: String::from("Mới nhất"),
+							kind: ListingKind::List,
+						}),
 					},
 				},
 				// 5. AnimeList — popular ranking
@@ -1056,7 +1139,11 @@ impl Home for FakeViSource {
 						ranking: true,
 						page_size: Some(6),
 						entries: popular,
-						listing: Some(Listing { id: String::from("popular"), name: String::from("Phổ biến"), kind: ListingKind::List }),
+						listing: Some(Listing {
+							id: String::from("popular"),
+							name: String::from("Phổ biến"),
+							kind: ListingKind::List,
+						}),
 					},
 				},
 				// 6. Filters — genre chips with actionable MultiSelect values
@@ -1098,14 +1185,16 @@ impl DynamicFilters for FakeViSource {
 				title: Some("Tìm kiếm".into()),
 				placeholder: Some("Tên anime...".into()),
 				..Default::default()
-			}.into(),
+			}
+			.into(),
 			SortFilter {
 				id: "sort".into(),
 				title: Some("Sắp xếp".into()),
 				can_ascend: true,
 				options: vec!["Đánh giá".into(), "Phổ biến".into(), "A-Z".into()],
 				..Default::default()
-			}.into(),
+			}
+			.into(),
 			MultiSelectFilter {
 				id: "genres".into(),
 				title: Some("Thể loại".into()),
@@ -1114,13 +1203,15 @@ impl DynamicFilters for FakeViSource {
 				uses_tag_style: true,
 				options: ALL_GENRES.iter().map(|g| Cow::Borrowed(*g)).collect(),
 				..Default::default()
-			}.into(),
+			}
+			.into(),
 			SelectFilter {
 				id: "status".into(),
 				title: Some("Trạng thái".into()),
 				options: vec!["Tất cả".into(), "Đang phát".into(), "Hoàn thành".into()],
 				..Default::default()
-			}.into(),
+			}
+			.into(),
 			RangeFilter {
 				id: "year".into(),
 				title: Some("Năm phát hành".into()),
@@ -1128,7 +1219,8 @@ impl DynamicFilters for FakeViSource {
 				max: Some(2025.0),
 				decimal: false,
 				..Default::default()
-			}.into(),
+			}
+			.into(),
 			Filter::note("Nguồn dữ liệu demo — Komorei Fake (VI)"),
 		])
 	}
@@ -1145,12 +1237,14 @@ impl DynamicSettings for FakeViSource {
 				notification: Some("Đã thay đổi ưu tiên chất lượng".into()),
 				refreshes: Some(vec!["settings".into()]),
 				..Default::default()
-			}.into(),
+			}
+			.into(),
 			ToggleSetting {
 				key: "show_intro".into(),
 				title: "Hiển thị nút bỏ intro".into(),
 				..Default::default()
-			}.into(),
+			}
+			.into(),
 			// A one-shot action button — the demo app forwards its `notification`
 			// to handle_notification("clear_cache") on tap (NotificationHandler).
 			ButtonSetting {
@@ -1158,7 +1252,8 @@ impl DynamicSettings for FakeViSource {
 				title: "Xoá bộ nhớ đệm nguồn".into(),
 				notification: Some("clear_cache".into()),
 				..Default::default()
-			}.into(),
+			}
+			.into(),
 		])
 	}
 }
@@ -1168,10 +1263,26 @@ impl DynamicSettings for FakeViSource {
 impl DynamicListings for FakeViSource {
 	fn get_dynamic_listings(&self) -> Result<Vec<Listing>> {
 		Ok(vec![
-			Listing { id: String::from("latest"), name: String::from("Mới nhất"), kind: ListingKind::List },
-			Listing { id: String::from("popular"), name: String::from("Phổ biến"), kind: ListingKind::List },
-			Listing { id: String::from("ongoing"), name: String::from("Đang phát"), kind: ListingKind::List },
-			Listing { id: String::from("completed"), name: String::from("Hoàn thành"), kind: ListingKind::List },
+			Listing {
+				id: String::from("latest"),
+				name: String::from("Mới nhất"),
+				kind: ListingKind::List,
+			},
+			Listing {
+				id: String::from("popular"),
+				name: String::from("Phổ biến"),
+				kind: ListingKind::List,
+			},
+			Listing {
+				id: String::from("ongoing"),
+				name: String::from("Đang phát"),
+				kind: ListingKind::List,
+			},
+			Listing {
+				id: String::from("completed"),
+				name: String::from("Hoàn thành"),
+				kind: ListingKind::List,
+			},
 		])
 	}
 }
@@ -1203,7 +1314,9 @@ impl DeepLinkHandler for FakeViSource {
 		if let Some(idx) = url.find("/anime/") {
 			let key = url[idx + "/anime/".len()..].trim_end_matches('/');
 			if entry_by_key(key).is_some() {
-				return Ok(Some(DeepLinkResult::Anime { key: String::from(key) }));
+				return Ok(Some(DeepLinkResult::Anime {
+					key: String::from(key),
+				}));
 			}
 		}
 		if let Some(idx) = url.find("/watch/") {
@@ -1235,14 +1348,20 @@ impl DeepLinkHandler for FakeViSource {
 // ── MigrationHandler ────────────────────────────────────────────────────────
 
 impl MigrationHandler for FakeViSource {
-	fn handle_anime_migration(&self, key: String) -> Result<String> { Ok(key) }
-	fn handle_episode_migration(&self, _anime_key: String, episode_key: String) -> Result<String> { Ok(episode_key) }
+	fn handle_anime_migration(&self, key: String) -> Result<String> {
+		Ok(key)
+	}
+	fn handle_episode_migration(&self, _anime_key: String, episode_key: String) -> Result<String> {
+		Ok(episode_key)
+	}
 }
 
 // ── Segment interceptors ────────────────────────────────────────────────────
 
 impl SegmentUrlInterceptor for FakeViSource {
-	fn intercept_segment_url(&self, _stream_data: Option<&StreamData>, url: String) -> String { url }
+	fn intercept_segment_url(&self, _stream_data: Option<&StreamData>, url: String) -> String {
+		url
+	}
 }
 
 impl SegmentDataInterceptor for FakeViSource {
