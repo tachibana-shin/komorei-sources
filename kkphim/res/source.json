@@ -1,0 +1,17 @@
+{
+	"info": {
+		"id": "vi.kkphim",
+		"name": "KKPhim",
+		"altNames": [
+			"KKPhim Việt Nam",
+			"Phim Nguồn",
+			"KKPhim.VIP"
+		],
+		"version": 1,
+		"url": "https://kkphim1.com",
+		"contentRating": 0,
+		"languages": [
+			"vi"
+		]
+	}
+}

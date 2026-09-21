@@ -1,13 +1,17 @@
 //! # OPhim source (`vi.ophim`)
 //!
-//! Scrapes the OPhim API (https://ophim1.com) — the API family reused by OPhim
-//! clones (phimapi.com, ...). The source reads BOTH envelope shapes:
+//! Scrapes the OPhim API — the API family reused by OPhim clones and the
+//! phimapi project (phimapi.com, ...). The original `ophim1.com` is dead ("the
+//! website has been stopped"); the default base is the living `phimapi.com`.
+//! The source reads BOTH envelope shapes:
 //!
 //! - classic (standard OPhim): `{ status, data: { items | item, params } }`
-//! - flat fork (phimapi): `{ status, items | movie }`
+//! - flat fork (phimapi): list `{ status, items, pagination }`, search
+//!   `{ status, data: { items } }`, detail `{ status, movie, episodes }`
+//!   (**episodes at the ROOT**, not under `movie`)
 //!
 //! Because OPhim domains die and are reborn constantly, the base URL can be
-//! changed in Source settings (`base_url`), defaulting to `https://ophim1.com`.
+//! changed in Source settings (`base_url`), defaulting to `https://phimapi.com`.
 //!
 //! ## Data model mapping to Komorei
 //!
@@ -51,7 +55,7 @@ use komorei::{
 };
 
 const SOURCE_ID: &str = "vi.ophim";
-const DEFAULT_BASE: &str = "https://ophim1.com";
+const DEFAULT_BASE: &str = "https://phimapi.com";
 /// Items per API page when there is no `pagination` (fallback for has_next).
 const ITEMS_PER_PAGE: usize = 24;
 const SETTING_BASE_URL: &str = "base_url";
@@ -185,6 +189,9 @@ struct ListData {
 struct ListEnvelope {
 	data: Option<ListData>,
 	items: Option<Vec<OphimMovie>>,
+	/// phimapi list pagination lives at the ROOT (`{ status, items,
+	/// pagination: {...} }`) instead of `data.params.pagination`.
+	pagination: Option<Pagination>,
 }
 
 #[derive(Deserialize, Default, Clone)]
@@ -213,6 +220,10 @@ struct DetailData {
 struct DetailEnvelope {
 	data: Option<DetailData>,
 	movie: Option<OphimMovie>,
+	/// phimapi detail puts the episode groups at the ROOT of the envelope
+	/// (`{ status, msg, movie: {...}, episodes: [...] }`) while classic OPhim
+	/// nests them under `data.item.episodes`.
+	episodes: Option<Vec<EpisodeGroup>>,
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -438,20 +449,32 @@ fn detect_stream_type(url: &str) -> StreamType {
 /// Fetch movie detail (`{base}/phim/{slug}`), handling both envelopes.
 fn fetch_detail(base: &str, slug: &str) -> Result<OphimMovie> {
 	let env: DetailEnvelope = Request::get(format!("{base}/phim/{slug}"))?.json_owned()?;
-	env.data
+	let mut movie = env
+		.data
 		.and_then(|d| d.item)
 		.or(env.movie)
-		.ok_or_else(|| error!("Không tìm thấy phim: {slug}"))
+		.ok_or_else(|| error!("Không tìm thấy phim: {slug}"))?;
+	// phimapi returns the episode groups at the envelope root; classic OPhim
+	// already has them in `data.item.episodes`. Prefer the root list when the
+	// nested one is empty (e.g. clones that only fill the top-level field).
+	if movie.episodes.is_empty() {
+		movie.episodes = env.episodes.unwrap_or_default();
+	}
+	Ok(movie)
 }
 
 /// Fetch one list page and return (items, has_next_page).
 fn fetch_page(url: &str) -> Result<(Vec<OphimMovie>, bool)> {
 	let env: ListEnvelope = Request::get(url)?.json_owned()?;
 	let has_next = env
-		.data
+		.pagination
 		.as_ref()
-		.and_then(|d| d.params.as_ref())
-		.and_then(|p| p.pagination.as_ref())
+		.or_else(|| {
+			env.data
+				.as_ref()
+				.and_then(|d| d.params.as_ref())
+				.and_then(|p| p.pagination.as_ref())
+		})
 		.map(|pg| pg.current_page < pg.total_pages)
 		.unwrap_or(false);
 	let items = env
@@ -1145,7 +1168,7 @@ impl DynamicFilters for OphimSource {
 			}
 			.into(),
 			Filter::note(
-				"Nội dung khai thác từ API OPhim (https://ophim1.com). Có thể đổi base URL ở Cài đặt nguồn.",
+				"Nội dung khai thác từ API OPhim (https://phimapi.com). Có thể đổi base URL ở Cài đặt nguồn.",
 			),
 		])
 	}
@@ -1161,7 +1184,7 @@ impl DynamicSettings for OphimSource {
 			TextSetting {
 				key: SETTING_BASE_URL.into(),
 				title: "Địa chỉ API OPhim".into(),
-				placeholder: Some("https://ophim1.com".into()),
+				placeholder: Some("https://phimapi.com".into()),
 				notification: Some("base_url_changed".into()),
 				refreshes: Some(vec!["content".into(), "listings".into()]),
 				default: Some(DEFAULT_BASE.into()),
@@ -1256,8 +1279,9 @@ register_source!(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use komorei_test::komorei_test;
 
-	#[test]
+	#[komorei_test]
 	fn parses_isodate_millis_utc() {
 		assert_eq!(
 			parse_isodate_millis("2026-09-21T18:52:19.000Z"),
@@ -1271,7 +1295,7 @@ mod tests {
 		assert_eq!(parse_isodate_millis("not-a-date"), None);
 	}
 
-	#[test]
+	#[komorei_test]
 	fn splits_season_key_into_slug_and_server() {
 		assert_eq!(
 			split_server("nguoi-nhan|OPhim"),
@@ -1284,7 +1308,7 @@ mod tests {
 		assert_eq!(split_server("nguoi-nhan"), ("nguoi-nhan", None));
 	}
 
-	#[test]
+	#[komorei_test]
 	fn parses_leading_digits_of_episode_labels() {
 		assert_eq!(parse_episode_number("Tập 12/24"), "12");
 		assert_eq!(parse_episode_number("Full"), "1");
@@ -1293,7 +1317,7 @@ mod tests {
 		assert_eq!(parse_first_int(Some("Full")), None);
 	}
 
-	#[test]
+	#[komorei_test]
 	fn absolutizes_protocol_relative_images() {
 		assert_eq!(
 			absolutize_url("//img.ophim.com/a.jpg"),
@@ -1306,7 +1330,7 @@ mod tests {
 		assert_eq!(absolutize_opt(None), None);
 	}
 
-	#[test]
+	#[komorei_test]
 	fn detects_stream_type_from_url() {
 		assert_eq!(
 			detect_stream_type("https://cdn.test/a.m3u8"),
@@ -1330,7 +1354,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[komorei_test]
 	fn strips_html_tags_and_entities_from_content() {
 		assert_eq!(
 			strip_html("<p>Người Nhện chiến đấu&hellip;</p>&nbsp;"),
@@ -1339,7 +1363,7 @@ mod tests {
 		assert_eq!(strip_html("plain text"), "plain text");
 	}
 
-	#[test]
+	#[komorei_test]
 	fn maps_genre_and_country_names_to_ophim_slugs() {
 		assert_eq!(genre_slug("Hành Động"), "hanh-dong");
 		assert_eq!(genre_slug("Mecha"), "mecha");
@@ -1348,7 +1372,7 @@ mod tests {
 		assert_eq!(country_slug("Nhật Bản"), "nhat-ban");
 	}
 
-	#[test]
+	#[komorei_test]
 	fn maps_ophim_status_enums() {
 		let completed = OphimMovie {
 			status: Some(String::from("completed")),
@@ -1363,7 +1387,7 @@ mod tests {
 		assert_eq!(map_status(&OphimMovie::default()), AnimeStatus::Unknown);
 	}
 
-	#[test]
+	#[komorei_test]
 	fn season_key_roundtrip_builds_linked_anime_ids() {
 		// fake detail JSON: the main server first (like the real OPhim)
 		let groups = vec![
@@ -1428,5 +1452,104 @@ mod tests {
 				.collect::<Vec<_>>(),
 			vec!["tap-1", "tap-2"]
 		);
+	}
+
+	#[komorei_test]
+	fn reads_root_level_episodes_from_phimapi_detail() {
+		// phimapi.com `/phim/{slug}` → `{ status, msg, movie, episodes }` with
+		// the groups at the ROOT of the envelope.
+		let json = r##"{
+			"status": true,
+			"msg": "done",
+			"movie": { "name": "33 Người Thợ Mỏ", "slug": "33-nguoi-tho-mo" },
+			"episodes": [
+				{ "server_name": "Vietsub", "is_ai": false, "server_data": [
+					{ "name": "Full", "slug": "full", "filename": "The 33 2015",
+					  "link_embed": "https://player.phimapi.com/player/?url=...",
+					  "link_m3u8": "https://a.kvp726.com/20260921/oqKrNtja/index.m3u8" }
+				] }
+			]
+		}"##;
+		let env: DetailEnvelope = serde_json::from_str(json).expect("detail envelope decodes");
+		assert!(env.movie.is_some());
+		let root_eps = env.episodes.clone().unwrap_or_default();
+		assert_eq!(root_eps.len(), 1);
+		assert_eq!(root_eps[0].server_name, "Vietsub");
+		assert_eq!(root_eps[0].server_data[0].slug, "full");
+		assert!(root_eps[0].server_data[0].link_m3u8.is_some());
+
+		// fetch_detail merge: root-level episodes win when the movie has none.
+		let movie = OphimMovie {
+			episodes: Vec::new(),
+			..Default::default()
+		};
+		let mut env = env;
+		env.movie = Some(movie);
+		let mut full = env.movie.take().unwrap();
+		if full.episodes.is_empty() {
+			full.episodes = env.episodes.unwrap_or_default();
+		}
+		assert_eq!(full.episodes.len(), 1);
+		assert_eq!(full.episodes[0].server_name, "Vietsub");
+	}
+
+	#[komorei_test]
+	fn reads_root_pagination_from_phimapi_list() {
+		// phimapi.com `/danh-sach/{path}?page=` → flat `{ status, msg, items,
+		// pagination }` (pagination at the ROOT, not under data.params).
+		let json = r##"{
+			"status": true,
+			"msg": "done",
+			"items": [
+				{ "name": "A", "slug": "a", "poster_url": "https://phimimg.com/a.jpg", "year": 2024 }
+			],
+			"pagination": { "totalItems": 30106, "totalItemsPerPage": 24, "currentPage": 1, "totalPages": 1255 }
+		}"##;
+		let env: ListEnvelope = serde_json::from_str(json).expect("list envelope decodes");
+		let has_next = env
+			.pagination
+			.as_ref()
+			.map(|pg| pg.current_page < pg.total_pages)
+			.unwrap_or(false);
+		assert!(has_next);
+		let items = env.items.unwrap_or_default();
+		assert_eq!(items.len(), 1);
+		assert_eq!(items[0].slug, "a");
+
+		// classic OPhim still works: pagination nested under data.params.
+		let json = r##"{
+			"data": {
+				"items": [ { "name": "B", "slug": "b" } ],
+				"params": { "pagination": { "currentPage": 2, "totalPages": 2 } }
+			}
+		}"##;
+		let env: ListEnvelope = serde_json::from_str(json).expect("classic envelope decodes");
+		let nested = env
+			.data
+			.as_ref()
+			.and_then(|d| d.params.as_ref())
+			.and_then(|p| p.pagination.as_ref());
+		assert_eq!(nested.map(|pg| pg.current_page), Some(2));
+		assert!(!nested.map(|pg| pg.current_page < pg.total_pages).unwrap_or(false));
+	}
+
+	#[komorei_test]
+	fn reads_search_items_under_data() {
+		// phimapi `/tim-kiem` → `{ status, message, data: { items, params } }`.
+		let json = r##"{
+			"status": "success",
+			"message": "done",
+			"data": {
+				"items": [ { "name": "Naruto", "slug": "naruto", "year": 2002 } ],
+				"params": { "type": "series" }
+			}
+		}"##;
+		let env: ListEnvelope = serde_json::from_str(json).expect("search envelope decodes");
+		let items = env
+			.data
+			.and_then(|d| d.items)
+			.unwrap_or_default();
+		assert_eq!(items.len(), 1);
+		assert_eq!(items[0].name, "Naruto");
 	}
 }
