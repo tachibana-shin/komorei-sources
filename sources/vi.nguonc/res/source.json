@@ -1,0 +1,17 @@
+{
+	"info": {
+		"id": "vi.nguonc",
+		"name": "Nguồn C",
+		"altNames": [
+			"NguonC",
+			"Nguồn Phim",
+			"NGUỒNC"
+		],
+		"version": 1,
+		"url": "https://phim.nguonc.com",
+		"contentRating": 0,
+		"languages": [
+			"vi"
+		]
+	}
+}

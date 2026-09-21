@@ -7,13 +7,13 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-komorei = { path = "../../komorei-sdk/crates/lib", features = ["json"] }
+komorei = { path = "../../../komorei-sdk/crates/lib", features = ["json"] }
 # Direct dep because serde's derive macro expands to `::serde` paths.
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
 
 [dev-dependencies]
-komorei = { path = "../../komorei-sdk/crates/lib", features = ["test"] }
-komorei-test = { path = "../../komorei-sdk/crates/test-macro" }
+komorei = { path = "../../../komorei-sdk/crates/lib", features = ["test"] }
+komorei-test = { path = "../../../komorei-sdk/crates/test-macro" }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [profile.dev]

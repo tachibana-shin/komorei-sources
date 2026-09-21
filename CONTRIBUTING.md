@@ -34,7 +34,7 @@ Sources should generally (when the site provides the corresponding data):
 - Ship filter options matching the site's filters
 
 Implementing home pages and listings is encouraged but not required for every
-source. The `ophim` and `fake-vi-source` sources in this repo are good
+source. The `vi.ophim` and `vi.fake-source` sources in this repo are good
 references.
 
 ## Templates

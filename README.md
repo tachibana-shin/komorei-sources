@@ -8,8 +8,8 @@ packaged into a `.krx` file. Every source is built into a single source list
 
 > This is a **standalone git repository** — it lives next to the app repo at a
 > relative path (like `komorei-sdk/`). The app only references
-> `sources/ophim/package.krx` for JVM tests; source code does not belong to the
-> app repo.
+> `sources/sources/vi.ophim/package.krx` for JVM tests; source code does not
+> belong to the app repo.
 
 ## Usage
 
@@ -24,33 +24,32 @@ source.
 
 ## Layout
 
-```
-.github/workflows/   CI: build the list on main, deploy public/ to gh-pages
-<id>/                one crate per source (Cargo.toml, src/, res/)
-<id>/res/            source.json + icon.png (packaged inside the .krx)
-templates/           shared template crates for similar sites
-public/              generated source list (gitignored, deployed by CI)
-```
-
-This repository uses the **flat layout** — crates live directly under the repo
-root. The CLI discovers both this layout and the nested Aidoku-style one
-(`<root>/sources/<id>/`), so either works.
-
-Current sources:
+This repository follows the standard Aidoku-Community layout — every source
+crate lives in a `sources/<id>/` subdirectory, where the folder name matches
+the source `info.id` (e.g. `vi.ophim`):
 
 ```
 .
-├── fake-vi-source/   # SAMPLE source: fully fake data (runs offline, no network)
-└── ophim/            # OPhim API (classic ophim1.com + flat fork phimapi.com)
+├── .github/workflows/   CI: build the list on main, deploy public/ to gh-pages
+├── sources/             one crate per source (Cargo.toml, src/, res/)
+│   ├── vi.ophim/        OPhim API (classic ophim1.com + flat fork phimapi.com)
+│   ├── vi.kkphim/       KKPhim HTML scrape (m3u8 links, configurable base URL)
+│   ├── vi.nguonc/       Nguồn C API (JWPlayer + bootstrap/issue embed grant, HLS)
+│   └── vi.fake-source/  SAMPLE source: fully fake data (runs offline, no network)
+├── templates/           shared template crates for similar sites
+└── public/              generated source list (gitignored, deployed by CI)
 ```
 
-> A crate containing a `.skip` file (like `fake-vi-source`) is excluded from
+The CLI (`komorei repo build/verify/serve --root .`) discovers only this nested
+layout: `<root>/sources/<id>/`.
+
+> A crate containing a `.skip` file (like `vi.fake-source`) is excluded from
 > `repo build` / `repo verify` / `repo serve` and from CI lint.
 
 Structure of a single source:
 
 ```
-<id>/
+sources/<id>/
 ├── Cargo.toml            # crate-type = ["cdylib"]; deps: komorei (+ serde for JSON)
 ├── .cargo/config.toml    # default build target = wasm32-unknown-unknown
 ├── res/
