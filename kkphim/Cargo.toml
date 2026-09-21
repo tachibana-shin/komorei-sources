@@ -1,5 +1,5 @@
 [package]
-name = "ophim-source"
+name = "kkphim-source"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,6 +10,9 @@ crate-type = ["cdylib"]
 komorei = { path = "../../komorei-sdk/crates/lib", features = ["json"] }
 # Direct dep because serde's derive macro expands to `::serde` paths.
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+# The detail page embeds the episode/stream list as JSON in a `<script
+# id="srcData">` tag — the source parses it with serde_json directly.
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 komorei = { path = "../../komorei-sdk/crates/lib", features = ["test"] }
