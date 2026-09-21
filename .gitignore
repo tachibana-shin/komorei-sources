@@ -4,9 +4,7 @@ public/icons/
 public/sources/
 public/*.json
 
-# crate build outputs — both layouts: flat (ophim/target) and aidoku-style
-# (sources/vi.x/target). `**/target` (no trailing slash) also matches the
-# legacy fake-vi-source/target symlink pointing at a dead mount.
+# crate build outputs — standard aidoku-community layout (sources/<id>/target).
 **/target
 
 .idea

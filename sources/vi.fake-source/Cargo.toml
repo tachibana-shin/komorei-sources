@@ -7,11 +7,11 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-komorei = { path = "../../komorei-sdk/crates/lib" }
+komorei = { path = "../../../komorei-sdk/crates/lib" }
 
 [dev-dependencies]
-komorei = { path = "../../komorei-sdk/crates/lib", features = ["test"] }
-komorei-test = { path = "../../komorei-sdk/crates/test-macro" }
+komorei = { path = "../../../komorei-sdk/crates/lib", features = ["test"] }
+komorei-test = { path = "../../../komorei-sdk/crates/test-macro" }
 
 [profile.dev]
 panic = "abort"
