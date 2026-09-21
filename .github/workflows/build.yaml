@@ -3,10 +3,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "sources/**"
-      - "templates/**"
-      - ".github/workflows/build.yaml"
 
 concurrency:
   group: ${{ github.workflow }}
@@ -32,8 +28,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            sources/**/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('sources/**/Cargo.lock') }}
+            **/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Install komorei CLI

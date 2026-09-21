@@ -1,27 +1,29 @@
 //! # OPhim source (`vi.ophim`)
 //!
-//! Khai thác API OPhim (https://ophim1.com) — cùng họ API được các clone
-//! OPhim (phimapi.com, ...) dùng lại. Source đọc được CẢ hai dạng envelope:
+//! Scrapes the OPhim API (https://ophim1.com) — the API family reused by OPhim
+//! clones (phimapi.com, ...). The source reads BOTH envelope shapes:
 //!
-//! - cổ điển (OPhim chuẩn): `{ status, data: { items | item, params } }`
-//! - fork phẳng (phimapi): `{ status, items | movie }`
+//! - classic (standard OPhim): `{ status, data: { items | item, params } }`
+//! - flat fork (phimapi): `{ status, items | movie }`
 //!
-//! Bởi vì domain OPhim chết và tái sinh liên tục, base URL có thể đổi ở
-//! Cài đặt nguồn (`base_url`), mặc định là `https://ophim1.com`.
+//! Because OPhim domains die and are reborn constantly, the base URL can be
+//! changed in Source settings (`base_url`), defaulting to `https://ophim1.com`.
 //!
-//! ## Mô hình dữ liệu chuyển sang Komorei
+//! ## Data model mapping to Komorei
 //!
-//! - **Season = một server phát** trên trang chi tiết. `AnimeSeason.anime_id`
-//!   được encode thành `"{slug}|{server_name}"`; app gọi `get_anime_update`
-//!   với key đó (qua `AnimeDetailViewModel.fetchEpisodesForSeason`), source
-//!   bóc phần sau dấu `|` để trả đúng tập của server đã chọn. Sắp xếp server
-//!   theo số tập giảm dần → server lớn nhất (thường `OPhim`) là mặc định.
-//! - **Episode key = `slug` của entry** trong `server_data` (vd `tap-1`).
-//! - `get_stream_list`: mỗi server = một `StreamInfo` (lấy từ `seasons` mà
-//!   app vừa nhận, không tốn request). `get_stream`: fetch lại chi tiết,
-//!   tìm group theo server, entry theo episode key; nếu server yêu cầu không
-//!   có tập đó thì **fallback sang group đầu tiên có chứa tập** (hỗ trợ lúc
-//!   app auto-resolve server đầu tiên cho tập chỉ tồn tại ở server khác).
+//! - **Season = one playback server** on the detail page. `AnimeSeason.anime_id`
+//!   is encoded as `"{slug}|{server_name}"`; the app calls `get_anime_update`
+//!   with that key (via `AnimeDetailViewModel.fetchEpisodesForSeason`) and the
+//!   source strips the part after `|` to return the episodes of the selected
+//!   server. Servers are sorted by episode count descending, so the largest one
+//!   (usually `OPhim`) is the default.
+//! - **Episode key = `slug` of the entry** in `server_data` (e.g. `tap-1`).
+//! - `get_stream_list`: each server is a `StreamInfo` (taken from the `seasons`
+//!   the app just received, no extra request). `get_stream`: refetches the
+//!   detail, finds the group by server and the entry by episode key; when the
+//!   requested server does not have that episode it **falls back to the first
+//!   group containing it** (supports the app auto-resolving the first server
+//!   for episodes that only exist on another server).
 
 #![no_std]
 extern crate alloc;
@@ -34,31 +36,31 @@ use alloc::{
 	vec::Vec,
 };
 use komorei::{
-	imports::defaults::{defaults_get, defaults_set, DefaultValue},
-	imports::net::Request,
-	prelude::*,
-	helpers::uri::QueryParameters,
-	serde::Deserialize,
 	Anime, AnimePageResult, AnimeSeason, AnimeStatus, AnimeWithEpisode, ButtonSetting,
 	CategoryLink, DeepLinkHandler, DeepLinkResult, DynamicFilters, DynamicListings,
 	DynamicSettings, Episode, Filter, FilterItem, FilterValue, Home, HomeComponent,
 	HomeComponentValue, HomeLayout, Link, LinkValue, Listing, ListingKind, ListingProvider,
 	MigrationHandler, MultiSelectFilter, NotificationHandler, RangeFilter, Result, SelectFilter,
-	Setting, SortFilter, SortFilterDefault, Source, StreamData, StreamInfo, StreamType,
-	TextFilter, TextSetting,
+	Setting, SortFilter, SortFilterDefault, Source, StreamData, StreamInfo, StreamType, TextFilter,
+	TextSetting,
+	helpers::uri::QueryParameters,
+	imports::defaults::{DefaultValue, defaults_get, defaults_set},
+	imports::net::Request,
+	prelude::*,
+	serde::Deserialize,
 };
 
 const SOURCE_ID: &str = "vi.ophim";
 const DEFAULT_BASE: &str = "https://ophim1.com";
-/// Số item mỗi trang của API khi không có `pagination` (fallback cho has_next).
+/// Items per API page when there is no `pagination` (fallback for has_next).
 const ITEMS_PER_PAGE: usize = 24;
 const SETTING_BASE_URL: &str = "base_url";
 const SETTING_LAST_NOTIFICATION: &str = "last_notification";
 
 // ────────────────────────────────────────────────────────────────────────────
-// Danh mục Thể loại & Quốc gia (name → slug của OPhim). Trùng cả cho home
-// chips "Thể Loại" lẫn MultiSelect filters — khi build URL search, name được
-// ánh xạ sang slug qua bảng này.
+// Genre & Country catalogs (name → OPhim slug). Used for both the home
+// "Thể Loại" chips and the MultiSelect filters — when building the search URL
+// the name is mapped to a slug through these tables.
 // ────────────────────────────────────────────────────────────────────────────
 
 const GENRES: &[(&str, &str)] = &[
@@ -109,7 +111,7 @@ const COUNTRIES: &[(&str, &str)] = &[
 ];
 
 // ────────────────────────────────────────────────────────────────────────────
-// JSON structs — deserialize được cả hai envelope OPhim cổ điển & fork phẳng.
+// JSON structs — deserialize both the classic OPhim and flat-fork envelopes.
 // ────────────────────────────────────────────────────────────────────────────
 
 #[derive(Deserialize, Default, Clone)]
@@ -142,7 +144,7 @@ struct EpisodeGroup {
 	server_data: Vec<EpisodeEntry>,
 }
 
-/// Một phim trong list hoặc detail (detail có thêm `content`, `episodes`).
+/// A movie in a list or detail (detail additionally has `content`, `episodes`).
 #[derive(Deserialize, Default, Clone)]
 #[serde(default)]
 struct OphimMovie {
@@ -217,7 +219,7 @@ struct DetailEnvelope {
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Bóc server ra khỏi key `"{slug}|{server_name}"` (do season tạo ra).
+/// Extract the server from the season key `"{slug}|{server_name}"`.
 fn split_server(key: &str) -> (&str, Option<&str>) {
 	match key.find('|') {
 		Some(i) => (&key[..i], Some(&key[i + 1..])),
@@ -225,8 +227,7 @@ fn split_server(key: &str) -> (&str, Option<&str>) {
 	}
 }
 
-/// Chuyển URL protocol-relative (`//img.ophim...`) hoặc đường dẫn tương đối
-/// thành URL tuyệt đối.
+/// Turn a protocol-relative (`//img.ophim...`) or relative path URL absolute.
 fn absolutize_url(url: &str) -> String {
 	if url.starts_with("//") {
 		format!("https:{url}")
@@ -241,7 +242,7 @@ fn absolutize_opt(url: Option<&str>) -> Option<String> {
 	url.map(absolutize_url).filter(|s| !s.is_empty())
 }
 
-/// Lấy chạy chữ số đầu tiên trong chuỗi ("Tập 12/24" → "12", "Full HD" → "1").
+/// Extract the first run of digits in a string ("Tập 12/24" → "12", "Full HD" → "1").
 fn parse_episode_number(name: &str) -> String {
 	let mut digits = String::new();
 	for c in name.chars() {
@@ -258,7 +259,7 @@ fn parse_episode_number(name: &str) -> String {
 	}
 }
 
-/// Bóc chữ số đầu tiên ra số nguyên.
+/// Extract the first run of digits as an integer.
 fn parse_first_int(input: Option<&str>) -> Option<i32> {
 	let input = input?;
 	let mut digits = String::new();
@@ -272,7 +273,7 @@ fn parse_first_int(input: Option<&str>) -> Option<i32> {
 	digits.parse().ok()
 }
 
-/// Howard Hinnant `days_from_civil` — đổi ngày lịch → số ngày kể từ epoch.
+/// Howard Hinnant `days_from_civil` — civil date → days since the epoch.
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 	let y = if m <= 2 { y - 1 } else { y };
 	let era = if y >= 0 { y } else { y - 399 } / 400;
@@ -282,16 +283,15 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 	era * 146097 + doe - 719468
 }
 
-/// Parse `"2026-09-21T18:52:19.000Z"` → epoch millis (app đọc qua
+/// Parse `"2026-09-21T18:52:19.000Z"` → epoch millis (the app reads it via
 /// `Instant.ofEpochMilli`).
 fn parse_isodate_millis(input: &str) -> Option<i64> {
 	let bytes = input.as_bytes();
 	if bytes.len() < 19 {
 		return None;
 	}
-	let num = |start: usize, len: usize| -> Option<i64> {
-		Some(input[start..start + len].parse::<i64>().ok()?)
-	};
+	let num =
+		|start: usize, len: usize| -> Option<i64> { input[start..start + len].parse::<i64>().ok() };
 	let y = num(0, 4)?;
 	let mo = num(5, 2)?;
 	let d = num(8, 2)?;
@@ -319,8 +319,8 @@ fn parse_isodate_millis(input: &str) -> Option<i64> {
 	Some((days * 86_400 + h * 3_600 + mi * 60 + s) * 1_000 + ms)
 }
 
-/// Bóc tag HTML khỏi `content` (OPhim trả description dạng HTML) + decode
-/// một vài entity phổ biến.
+/// Strip HTML tags from `content` (OPhim returns the description as HTML) and
+/// decode a few common entities.
 fn strip_html(input: &str) -> String {
 	let mut result = String::with_capacity(input.len());
 	let mut it = input.chars().peekable();
@@ -382,7 +382,7 @@ fn year_link(year: Option<i32>) -> Option<CategoryLink> {
 	})
 }
 
-/// Slug từ bảng genre/country, fallback slugify đơn giản.
+/// Slug from the genre/country tables, falling back to a simple slugify.
 fn genre_slug(name: &str) -> String {
 	GENRES
 		.iter()
@@ -399,7 +399,7 @@ fn country_slug(name: &str) -> String {
 		.unwrap_or_else(|| slugify(name))
 }
 
-/// Slugify fallback: giữ chữ ASCII, phần khác → `-`.
+/// Slugify fallback: keep ASCII chars, everything else → `-`.
 fn slugify(name: &str) -> String {
 	let mut slug = String::new();
 	let mut prev_dash = false;
@@ -435,7 +435,7 @@ fn detect_stream_type(url: &str) -> StreamType {
 // Fetch + build
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Lấy chi tiết phim (`{base}/phim/{slug}`) theo cả hai envelope.
+/// Fetch movie detail (`{base}/phim/{slug}`), handling both envelopes.
 fn fetch_detail(base: &str, slug: &str) -> Result<OphimMovie> {
 	let env: DetailEnvelope = Request::get(format!("{base}/phim/{slug}"))?.json_owned()?;
 	env.data
@@ -444,7 +444,7 @@ fn fetch_detail(base: &str, slug: &str) -> Result<OphimMovie> {
 		.ok_or_else(|| error!("Không tìm thấy phim: {slug}"))
 }
 
-/// Fetch một trang list và trả về (items, has_next_page).
+/// Fetch one list page and return (items, has_next_page).
 fn fetch_page(url: &str) -> Result<(Vec<OphimMovie>, bool)> {
 	let env: ListEnvelope = Request::get(url)?.json_owned()?;
 	let has_next = env
@@ -463,7 +463,7 @@ fn fetch_page(url: &str) -> Result<(Vec<OphimMovie>, bool)> {
 	Ok((items, has_next))
 }
 
-/// Thẻ Lite từ một item list.
+/// Build a Lite card from a list item.
 fn build_lite(m: &OphimMovie, base: &str) -> Anime {
 	let poster = absolutize_opt(m.poster_url.as_deref().or(m.thumb_url.as_deref()));
 	Anime {
@@ -495,14 +495,14 @@ fn build_lite(m: &OphimMovie, base: &str) -> Anime {
 	}
 }
 
-/// Chi tiết đầy đủ: `seasons` = các server phát (sắp theo số tập giảm dần).
+/// Full detail: `seasons` = playback servers (sorted by episode count desc).
 fn build_full(base: &str, m: &OphimMovie, slug: &str) -> Anime {
 	let mut groups: Vec<&EpisodeGroup> = m
 		.episodes
 		.iter()
 		.filter(|g| !g.server_data.is_empty())
 		.collect();
-	groups.sort_by(|a, b| b.server_data.len().cmp(&a.server_data.len()));
+	groups.sort_by_key(|g| core::cmp::Reverse(g.server_data.len()));
 
 	let seasons = groups
 		.iter()
@@ -551,7 +551,7 @@ fn build_full(base: &str, m: &OphimMovie, slug: &str) -> Anime {
 	}
 }
 
-/// Tập cho đúng server được chọn (None → server đầu tiên = server lớn nhất).
+/// Episodes for the selected server (None → first server = largest).
 fn episodes_for_server(groups: &[EpisodeGroup], server: Option<&str>) -> Vec<Episode> {
 	let group = match server {
 		Some(name) => groups
@@ -581,7 +581,8 @@ fn episodes_for_server(groups: &[EpisodeGroup], server: Option<&str>) -> Vec<Epi
 	}
 }
 
-/// Tập stub cho màn hình Home ("Mới Cập Nhật") — số tập + ngày từ list item.
+/// Stub episode for the Home screen ("Mới Cập Nhật") — episode count + date
+/// from the list item.
 fn home_episode(m: &OphimMovie) -> Episode {
 	let n = m.episode_current.as_deref().unwrap_or("");
 	Episode {
@@ -598,7 +599,7 @@ fn home_episode(m: &OphimMovie) -> Episode {
 	}
 }
 
-/// Ánh xạ id listing → slug trên `/danh-sach/`.
+/// Map a listing id → slug on `/danh-sach/`.
 fn listing_path(id: &str) -> &'static str {
 	match id {
 		"bo" => "phim-bo",
@@ -611,7 +612,7 @@ fn listing_path(id: &str) -> &'static str {
 	}
 }
 
-/// Đẩy filters vào QueryParameters (genre/country name → slug).
+/// Push filters into QueryParameters (genre/country name → slug).
 fn apply_filters(qp: &mut QueryParameters, filters: &[FilterValue]) {
 	for f in filters {
 		match f {
@@ -654,10 +655,11 @@ fn apply_filters(qp: &mut QueryParameters, filters: &[FilterValue]) {
 				}
 			}
 			FilterValue::Range { id, from, to } if id == "year" => {
-				if let (Some(a), Some(b)) = (from, to) {
-					if (a - b).abs() < 0.5 && *a > 0.0 {
-						qp.push("year", Some(&format!("{}", *a as i32)));
-					}
+				if let (Some(a), Some(b)) = (from, to)
+					&& (a - b).abs() < 0.5
+					&& *a > 0.0
+				{
+					qp.push("year", Some(&format!("{}", *a as i32)));
 				}
 			}
 			FilterValue::Sort {
@@ -708,17 +710,16 @@ impl Source for OphimSource {
 		let mut qp = QueryParameters::with_capacity(6);
 		let page_str = page.to_string();
 		qp.push("page", Some(&page_str));
-		if query.is_some() {
-			let q = query.as_ref().unwrap();
-			if !q.is_empty() {
-				qp.push("keyword", Some(q));
-			}
+		if let Some(q) = query.as_ref()
+			&& !q.is_empty()
+		{
+			qp.push("keyword", Some(q));
 		}
 		apply_filters(&mut qp, &filters);
 		let qs = qp.to_string();
-		// Có keyword → /tim-kiem; không keyword (browse filters/chips) → danh
-		// sách mới cập nhật với cùng bộ filter (OPhim hỗ trợ category, country,
-		// year, sort trên cả hai endpoint).
+		// With a keyword → /tim-kiem; without one (browse filters/chips) → the
+		// recently-updated list with the same filter set (OPhim supports
+		// category, country, year, sort on both endpoints).
 		let url = if qs.contains("keyword=") {
 			format!("{base}/tim-kiem?{qs}")
 		} else {
@@ -758,7 +759,7 @@ impl Source for OphimSource {
 			.seasons
 			.iter()
 			.map(|s| {
-				// Ưu tiên lấy server từ anime_id ("{slug}|{server}"), fallback title.
+				// Prefer the server from anime_id ("{slug}|{server}"), fallback to title.
 				let server = s
 					.anime_id
 					.split_once('|')
@@ -778,9 +779,9 @@ impl Source for OphimSource {
 		let (slug, _) = split_server(&anime.key);
 		let movie = fetch_detail(&base, slug)?;
 
-		// Tìm trong đúng server yêu cầu trước; nếu server đó không có tập này
-		// (vd app auto-resolve server đầu tiên cho một tập chỉ tồn tại ở server
-		// khác) thì fallback qua mọi group.
+		// Look in the requested server first; if that server lacks the episode
+		// (e.g. the app auto-resolves the first server for an episode that only
+		// exists on another one) fall back to every group.
 		let entry = movie
 			.episodes
 			.iter()
@@ -902,7 +903,7 @@ impl Home for OphimSource {
 			format!("{base}/danh-sach/phim-le?page=1"),
 		];
 
-		// 3 request song song cho các hàng home.
+		// 3 parallel requests for the home rows.
 		let mut requests = Vec::with_capacity(3);
 		for u in &urls {
 			requests.push(Request::get(u.as_str())?);
@@ -931,16 +932,14 @@ impl Home for OphimSource {
 
 		let mut components = Vec::new();
 
-		// Nổi bật (banner)
+		// Featured (banner)
 		if !latest.is_empty() {
 			let links: Vec<Link> = latest
 				.iter()
 				.take(5)
 				.map(|m| Link {
 					title: m.name.clone(),
-					image_url: absolutize_opt(
-						m.poster_url.as_deref().or(m.thumb_url.as_deref()),
-					),
+					image_url: absolutize_opt(m.poster_url.as_deref().or(m.thumb_url.as_deref())),
 					value: Some(LinkValue::Anime(build_lite(m, &base))),
 					..Default::default()
 				})
@@ -956,7 +955,7 @@ impl Home for OphimSource {
 				..Default::default()
 			});
 
-			// Mới Cập Nhật (có số tập thật + ngày)
+			// Recently updated (real episode count + date)
 			let listed: Vec<AnimeWithEpisode> = latest
 				.iter()
 				.take(8)
@@ -980,7 +979,7 @@ impl Home for OphimSource {
 			});
 		}
 
-		// Phim Bộ
+		// Series (site category "Phim Bộ")
 		if !bo.is_empty() {
 			let entries: Vec<Link> = bo
 				.iter()
@@ -988,11 +987,8 @@ impl Home for OphimSource {
 				.map(|m| Link {
 					title: m.name.clone(),
 					subtitle: m.episode_current.clone(),
-					image_url: absolutize_opt(
-						m.poster_url.as_deref().or(m.thumb_url.as_deref()),
-					),
+					image_url: absolutize_opt(m.poster_url.as_deref().or(m.thumb_url.as_deref())),
 					value: Some(LinkValue::Anime(build_lite(m, &base))),
-					..Default::default()
 				})
 				.collect();
 			components.push(HomeComponent {
@@ -1009,7 +1005,7 @@ impl Home for OphimSource {
 			});
 		}
 
-		// Phim Lẻ
+		// Single movies (site category "Phim Lẻ")
 		if !le.is_empty() {
 			let entries: Vec<Link> = le
 				.iter()
@@ -1017,17 +1013,14 @@ impl Home for OphimSource {
 				.map(|m| Link {
 					title: m.name.clone(),
 					subtitle: m.episode_current.clone(),
-					image_url: absolutize_opt(
-						m.poster_url.as_deref().or(m.thumb_url.as_deref()),
-					),
+					image_url: absolutize_opt(m.poster_url.as_deref().or(m.thumb_url.as_deref())),
 					value: Some(LinkValue::Anime(build_lite(m, &base))),
-					..Default::default()
 				})
 				.collect();
 			components.push(HomeComponent {
 				title: Some(String::from("Phim Lẻ")),
 				value: HomeComponentValue::AnimeList {
-					ranking: false, /* list trả theo cập nhật, không phải thịnh hành */
+					ranking: false, /* list is ordered by update, not popularity */
 					page_size: None,
 					entries,
 					listing: Some(Listing {
@@ -1040,7 +1033,7 @@ impl Home for OphimSource {
 			});
 		}
 
-		// Thể Loại (chips → search với filter "category")
+		// Genre chips (site category "Thể Loại") → search with the "category" filter
 		let filters: Vec<FilterItem> = GENRES
 			.iter()
 			.map(|(name, _)| FilterItem {
@@ -1058,7 +1051,7 @@ impl Home for OphimSource {
 			..Default::default()
 		});
 
-		// Liên kết nhanh tới các danh sách
+		// Quick links to the listings
 		let links: Vec<Link> = [
 			("latest", "Mới Cập Nhật"),
 			("bo", "Phim Bộ"),
@@ -1109,7 +1102,11 @@ impl DynamicFilters for OphimSource {
 					index: 0,
 					ascending: false,
 				}),
-				options: vec!["Mới cập nhật".into(), "Năm phát hành".into(), "Tên A-Z".into()],
+				options: vec![
+					"Mới cập nhật".into(),
+					"Năm phát hành".into(),
+					"Tên A-Z".into(),
+				],
 				..Default::default()
 			}
 			.into(),
@@ -1184,9 +1181,12 @@ impl DynamicSettings for OphimSource {
 
 impl NotificationHandler for OphimSource {
 	fn handle_notification(&self, notification: String) {
-		// Source không có cache có ý nghĩa; chỉ ghi nhận thay đổi (base_url
-		// được đọc trực tiếp qua defaults_get mỗi request).
-		defaults_set(SETTING_LAST_NOTIFICATION, DefaultValue::String(notification));
+		// The source has no meaningful cache; just record the change (base_url
+		// is read directly via defaults_get on every request).
+		defaults_set(
+			SETTING_LAST_NOTIFICATION,
+			DefaultValue::String(notification),
+		);
 	}
 }
 
@@ -1199,13 +1199,14 @@ impl DeepLinkHandler for OphimSource {
 		if let Some(idx) = url.find("/xem-phim/") {
 			let rest = &url[idx + "/xem-phim/".len()..];
 			let mut parts = rest.splitn(2, '/');
-			if let (Some(slug), Some(ep)) = (parts.next(), parts.next()) {
-				if !slug.is_empty() && !ep.is_empty() {
-					return Ok(Some(DeepLinkResult::Episode {
-						anime_key: slug.to_string(),
-						key: ep.to_string(),
-					}));
-				}
+			if let (Some(slug), Some(ep)) = (parts.next(), parts.next())
+				&& !slug.is_empty()
+				&& !ep.is_empty()
+			{
+				return Ok(Some(DeepLinkResult::Episode {
+					anime_key: slug.to_string(),
+					key: ep.to_string(),
+				}));
 			}
 			return Ok(None);
 		}
@@ -1223,7 +1224,7 @@ impl DeepLinkHandler for OphimSource {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Migration — OPhim không đổi id qua các phiên bản, giữ nguyên (identity).
+// Migration — OPhim does not change ids across versions, keep identity.
 // ────────────────────────────────────────────────────────────────────────────
 
 impl MigrationHandler for OphimSource {
@@ -1249,7 +1250,7 @@ register_source!(
 );
 
 // ────────────────────────────────────────────────────────────────────────────
-// Tests (lib thuần — chạy trên host bằng `cargo test`, không cần wasm)
+// Tests (pure lib — run on the host with `cargo test`, no wasm needed)
 // ────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1266,14 +1267,20 @@ mod tests {
 			parse_isodate_millis("2026-09-20T00:00:00.000Z"),
 			Some(1_789_862_400_000)
 		);
-		assert_eq!(parse_isodate_millis("2026-09-21"), None); // thiếu thời gian
+		assert_eq!(parse_isodate_millis("2026-09-21"), None); // missing time part
 		assert_eq!(parse_isodate_millis("not-a-date"), None);
 	}
 
 	#[test]
 	fn splits_season_key_into_slug_and_server() {
-		assert_eq!(split_server("nguoi-nhan|OPhim"), ("nguoi-nhan", Some("OPhim")));
-		assert_eq!(split_server("nguoi-nhan|Trailer"), ("nguoi-nhan", Some("Trailer")));
+		assert_eq!(
+			split_server("nguoi-nhan|OPhim"),
+			("nguoi-nhan", Some("OPhim"))
+		);
+		assert_eq!(
+			split_server("nguoi-nhan|Trailer"),
+			("nguoi-nhan", Some("Trailer"))
+		);
 		assert_eq!(split_server("nguoi-nhan"), ("nguoi-nhan", None));
 	}
 
@@ -1288,18 +1295,39 @@ mod tests {
 
 	#[test]
 	fn absolutizes_protocol_relative_images() {
-		assert_eq!(absolutize_url("//img.ophim.com/a.jpg"), "https://img.ophim.com/a.jpg");
-		assert_eq!(absolutize_url("https://img.ophim.com/a.jpg"), "https://img.ophim.com/a.jpg");
+		assert_eq!(
+			absolutize_url("//img.ophim.com/a.jpg"),
+			"https://img.ophim.com/a.jpg"
+		);
+		assert_eq!(
+			absolutize_url("https://img.ophim.com/a.jpg"),
+			"https://img.ophim.com/a.jpg"
+		);
 		assert_eq!(absolutize_opt(None), None);
 	}
 
 	#[test]
 	fn detects_stream_type_from_url() {
-		assert_eq!(detect_stream_type("https://cdn.test/a.m3u8"), StreamType::HLS);
-		assert_eq!(detect_stream_type("https://cdn.test/hls/x.m3u8"), StreamType::HLS);
-		assert_eq!(detect_stream_type("https://cdn.test/a.mp4"), StreamType::MP4);
-		assert_eq!(detect_stream_type("https://cdn.test/a.mpd"), StreamType::DASH);
-		assert_eq!(detect_stream_type("https://cdn.test/embed?id=1"), StreamType::OTHER);
+		assert_eq!(
+			detect_stream_type("https://cdn.test/a.m3u8"),
+			StreamType::HLS
+		);
+		assert_eq!(
+			detect_stream_type("https://cdn.test/hls/x.m3u8"),
+			StreamType::HLS
+		);
+		assert_eq!(
+			detect_stream_type("https://cdn.test/a.mp4"),
+			StreamType::MP4
+		);
+		assert_eq!(
+			detect_stream_type("https://cdn.test/a.mpd"),
+			StreamType::DASH
+		);
+		assert_eq!(
+			detect_stream_type("https://cdn.test/embed?id=1"),
+			StreamType::OTHER
+		);
 	}
 
 	#[test]
@@ -1315,7 +1343,7 @@ mod tests {
 	fn maps_genre_and_country_names_to_ophim_slugs() {
 		assert_eq!(genre_slug("Hành Động"), "hanh-dong");
 		assert_eq!(genre_slug("Mecha"), "mecha");
-		assert_eq!(genre_slug("Sci-Fi"), "sci-fi"); // ngoài bảng → slugify ASCII
+		assert_eq!(genre_slug("Sci-Fi"), "sci-fi"); // not in the table → ASCII slugify
 		assert_eq!(country_slug("Mỹ"), "my");
 		assert_eq!(country_slug("Nhật Bản"), "nhat-ban");
 	}
@@ -1337,7 +1365,7 @@ mod tests {
 
 	#[test]
 	fn season_key_roundtrip_builds_linked_anime_ids() {
-		// fake detail JSON: server chính đứng đầu (như OPhim thật)
+		// fake detail JSON: the main server first (like the real OPhim)
 		let groups = vec![
 			EpisodeGroup {
 				server_name: String::from("OPhim"),
@@ -1360,17 +1388,24 @@ mod tests {
 				}],
 			},
 		];
-		let full = build_full("https://ophim.example", &OphimMovie {
-			name: String::from("Người Nhện"),
-			episodes: groups.clone(),
-			..Default::default()
-		}, "nguoi-nhan");
-		// server lớn nhất đứng đầu
+		let full = build_full(
+			"https://ophim.example",
+			&OphimMovie {
+				name: String::from("Người Nhện"),
+				episodes: groups.clone(),
+				..Default::default()
+			},
+			"nguoi-nhan",
+		);
+		// the largest server is sorted first
 		assert_eq!(
-			full.seasons.iter().map(|s| s.anime_id.as_str()).collect::<Vec<_>>(),
+			full.seasons
+				.iter()
+				.map(|s| s.anime_id.as_str())
+				.collect::<Vec<_>>(),
 			vec!["nguoi-nhan|OPhim", "nguoi-nhan|Trailer"]
 		);
-		// key season trả đúng tập của server đó
+		// the season key returns the episodes of that server
 		assert_eq!(
 			episodes_for_server(&groups, Some("OPhim"))
 				.iter()
@@ -1385,7 +1420,7 @@ mod tests {
 				.collect::<Vec<_>>(),
 			vec!["trailer-1"]
 		);
-		// mặc định (không chọn server) → server đầu = lớn nhất
+		// default (no server selected) → first server = largest
 		assert_eq!(
 			episodes_for_server(&groups, None)
 				.iter()

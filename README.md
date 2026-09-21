@@ -26,24 +26,31 @@ source.
 
 ```
 .github/workflows/   CI: build the list on main, deploy public/ to gh-pages
-sources/<id>/        one crate per source (Cargo.toml, src/, res/)
-sources/<id>/res/    source.json + icon.png (packaged inside the .krx)
+<id>/                one crate per source (Cargo.toml, src/, res/)
+<id>/res/            source.json + icon.png (packaged inside the .krx)
 templates/           shared template crates for similar sites
 public/              generated source list (gitignored, deployed by CI)
 ```
 
+This repository uses the **flat layout** — crates live directly under the repo
+root. The CLI discovers both this layout and the nested Aidoku-style one
+(`<root>/sources/<id>/`), so either works.
+
 Current sources:
 
 ```
-sources/
+.
 ├── fake-vi-source/   # SAMPLE source: fully fake data (runs offline, no network)
 └── ophim/            # OPhim API (classic ophim1.com + flat fork phimapi.com)
 ```
 
+> A crate containing a `.skip` file (like `fake-vi-source`) is excluded from
+> `repo build` / `repo verify` / `repo serve` and from CI lint.
+
 Structure of a single source:
 
 ```
-sources/<id>/
+<id>/
 ├── Cargo.toml            # crate-type = ["cdylib"]; deps: komorei (+ serde for JSON)
 ├── .cargo/config.toml    # default build target = wasm32-unknown-unknown
 ├── res/
@@ -68,7 +75,7 @@ rustup target add wasm32-unknown-unknown
 Scaffold a new source and build the whole repo:
 
 ```sh
-komorei init sources/vi.example --name "Example" --url https://example.com \
+komorei init ophim --name "Example" --url https://example.com \
   --languages vi --content-rating safe
 komorei repo build    # package every source and generate public/ (incl. index.min.json)
 komorei repo serve    # build + serve locally (add the printed URL to the app to test)
@@ -85,8 +92,7 @@ Push to GitHub: the `.github/workflows/build.yaml` workflow compiles every
 source and publishes `public/` to the `gh-pages` branch.
 
 > Note: `package.krx` and `target/` are gitignored — they are reproducible
-> artifacts. `fake-vi-source/target` is a legacy symlink pointing at the dead
-> `/mnt/komorei-data` mount (left as-is).
+> artifacts.
 
 ## Installing sources into the app
 
