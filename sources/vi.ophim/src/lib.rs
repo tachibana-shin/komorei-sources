@@ -148,6 +148,31 @@ struct EpisodeGroup {
 	server_data: Vec<EpisodeEntry>,
 }
 
+/// `episode_total`/`episode_current` on the OPhim detail — historically strings
+/// (`"Tập 12/24"`, `"Full"`, `"Hoàn Tất (12/12)"`), but newer phimapi forks send
+/// the raw integer (`25`, `12`). Accept both.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StrOrNum {
+	Text(String),
+	Number(i64),
+}
+
+/// Tolerant `Option<String>` deserializer: unwraps the integer form of
+/// `episode_total`/`episode_current` into its string rendering so parsing never
+/// trips on the string→number drift (serde errors with "invalid type: integer
+/// `25`, expected a string" without this, killing the whole detail).
+fn de_opt_str_or_num<'de, D>(de: D) -> core::result::Result<Option<String>, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	Ok(match Option::<StrOrNum>::deserialize(de)? {
+		Some(StrOrNum::Text(s)) => Some(s),
+		Some(StrOrNum::Number(n)) => Some(n.to_string()),
+		None => None,
+	})
+}
+
 /// A movie in a list or detail (detail additionally has `content`, `episodes`).
 #[derive(Deserialize, Default, Clone)]
 #[serde(default)]
@@ -164,7 +189,9 @@ struct OphimMovie {
 	r#type: Option<String>,
 	quality: Option<String>,
 	lang: Option<String>,
+	#[serde(default, deserialize_with = "de_opt_str_or_num")]
 	episode_total: Option<String>,
+	#[serde(default, deserialize_with = "de_opt_str_or_num")]
 	episode_current: Option<String>,
 	status: Option<String>,
 	content: Option<String>,
@@ -1315,6 +1342,27 @@ mod tests {
 		assert_eq!(parse_episode_number("Tập 1179"), "1179");
 		assert_eq!(parse_first_int(Some("Tập 2/24")), Some(2));
 		assert_eq!(parse_first_int(Some("Full")), None);
+	}
+
+	#[komorei_test]
+	fn episode_total_tolerates_the_string_to_integer_drift() {
+		#[derive(Deserialize)]
+		struct Msg {
+			#[serde(default, deserialize_with = "de_opt_str_or_num")]
+			episode_total: Option<String>,
+		}
+		// Newer phimapi forks: raw integer.
+		let m: Msg = serde_json::from_str(r#"{"episode_total": 25}"#).unwrap();
+		assert_eq!(m.episode_total.as_deref(), Some("25"));
+		// Classic envelope: string form.
+		let m: Msg = serde_json::from_str(r#"{"episode_total": "25"}"#).unwrap();
+		assert_eq!(m.episode_total.as_deref(), Some("25"));
+		// Labels still parse (`parse_first_int` semantics after normalization).
+		let m: Msg = serde_json::from_str(r#"{"episode_total": "Tập 12/24"}"#).unwrap();
+		assert_eq!(m.episode_total.as_deref(), Some("Tập 12/24"));
+		// Absent → default None.
+		let m: Msg = serde_json::from_str(r#"{}"#).unwrap();
+		assert_eq!(m.episode_total, None);
 	}
 
 	#[komorei_test]
