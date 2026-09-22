@@ -243,7 +243,8 @@ fn absolutize_url(url: &str, base: &str) -> String {
 }
 
 fn absolutize_opt(url: Option<&str>, base: &str) -> Option<String> {
-	url.map(|u| absolutize_url(u, base)).filter(|s| !s.is_empty())
+	url.map(|u| absolutize_url(u, base))
+		.filter(|s| !s.is_empty())
 }
 
 /// Last path segment of an internal link: `/the-loai/hanh-dong`, `/phim/foo`
@@ -477,8 +478,13 @@ fn parse_list_row(row: &Element, base: &str) -> Option<Anime> {
 	if slug.is_empty() || title.trim().is_empty() {
 		return None;
 	}
-	let origin = row.select_first(".info-origin").and_then(|e| e.text()).unwrap_or_default();
-	let poster = row.select_first(".poster-wrap img").and_then(|i| i.attr("src"));
+	let origin = row
+		.select_first(".info-origin")
+		.and_then(|e| e.text())
+		.unwrap_or_default();
+	let poster = row
+		.select_first(".poster-wrap img")
+		.and_then(|i| i.attr("src"));
 	let rating = row
 		.select_first(".rating-badge")
 		.and_then(|e| e.text())
@@ -519,7 +525,8 @@ fn parse_list_row(row: &Element, base: &str) -> Option<Anime> {
 
 /// Text of the `n`-th `td` (1-based) in a browse table row.
 fn row_aux(row: &Element, n: usize) -> Option<String> {
-	row.select_first(&format!("td:nth-child({n})")).and_then(|td| td.text())
+	row.select_first(&format!("td:nth-child({n})"))
+		.and_then(|td| td.text())
 }
 
 /// True when `ul.pagination` contains a page link further than `page`.
@@ -591,9 +598,7 @@ fn parse_detail(doc: &Document) -> DetailInfo {
 					.text()
 					.map(|x| x.contains("Nội dung phim"))
 					.unwrap_or(false);
-				if is_desc
-					&& let Some(sec) = t.parent()
-				{
+				if is_desc && let Some(sec) = t.parent() {
 					d.description = sec
 						.select_first(".text-light-emphasis")
 						.and_then(|e| e.text());
@@ -614,7 +619,10 @@ fn parse_detail(doc: &Document) -> DetailInfo {
 }
 
 fn parse_meta_card(card: &Element, d: &mut DetailInfo) {
-	let head = card.select_first(".head").and_then(|h| h.text()).unwrap_or_default();
+	let head = card
+		.select_first(".head")
+		.and_then(|h| h.text())
+		.unwrap_or_default();
 	if head.contains("Thể loại") {
 		d.genres = chip_links(card);
 	} else if head.contains("Quốc gia") {
@@ -699,10 +707,7 @@ fn lite_from_search(item: &SearchItem, base: &str) -> Anime {
 		quality_tag: item.quality.clone(),
 		seasons: Vec::new(),
 		episodes: None,
-		url: item
-			.url
-			.as_ref()
-			.map(|u| absolutize_url(u, base)),
+		url: item.url.as_ref().map(|u| absolutize_url(u, base)),
 	}
 }
 
@@ -846,7 +851,11 @@ impl Source for KkphimSource {
 			let env: SearchEnvelope = Request::get(&url)?.json_owned()?;
 			let last = env.last_page.unwrap_or(page);
 			return Ok(AnimePageResult {
-				entries: env.items.iter().map(|it| lite_from_search(it, &base)).collect(),
+				entries: env
+					.items
+					.iter()
+					.map(|it| lite_from_search(it, &base))
+					.collect(),
 				has_next_page: page < last,
 			});
 		}
@@ -1056,106 +1065,149 @@ impl Home for KkphimSource {
 				}
 			}
 		}
-		let latest: Vec<Anime> = listed.iter().map(|e| e.anime.clone()).collect();
+		Ok(HomeLayout {
+			components: home_components(&listed),
+		})
+	}
+}
 
-		let mut components = Vec::new();
+/// Build the home layout's components from the parsed "Mới Cập Nhật" table
+/// rows. Pure (no network) — every row is surfaced INLINE instead of deferred
+/// behind link chips: banner + a paged recent-updates list + a paged "Phim Mới"
+/// grid of the whole table, then genre chips and the section shortcuts.
+fn home_components(listed: &[AnimeWithEpisode]) -> Vec<HomeComponent> {
+	let latest: Vec<Anime> = listed.iter().map(|e| e.anime.clone()).collect();
 
-		// Featured (banner) — first 5 of the "Mới Cập Nhật" table.
-		if !latest.is_empty() {
-			let links: Vec<Link> = latest
-				.iter()
-				.take(5)
-				.map(|a| Link {
-					title: a.title.clone(),
-					image_url: if a.cover.is_empty() {
-						None
-					} else {
-						Some(a.cover.clone())
-					},
-					value: Some(LinkValue::Anime(a.clone())),
-					..Default::default()
-				})
-				.collect();
-			components.push(HomeComponent {
-				title: Some(String::from("Nổi Bật")),
-				value: HomeComponentValue::ImageScroller {
-					links,
-					auto_scroll_interval: Some(5.0),
-					width: Some(800),
-					height: Some(450),
-				},
-				..Default::default()
-			});
+	let mut components = Vec::new();
 
-			// Recently updated (grow episode + date from the table row).
-			let first_8 = listed
-				.iter()
-				.take(8)
-				.cloned()
-				.collect::<Vec<AnimeWithEpisode>>();
-			components.push(HomeComponent {
-				title: Some(String::from("Mới Cập Nhật")),
-				value: HomeComponentValue::AnimeEpisodeList {
-					page_size: None,
-					entries: first_8,
-					listing: Some(Listing {
-						id: String::from("danh-sach/phim-moi"),
-						name: String::from("Phim Mới"),
-						kind: ListingKind::List,
-					}),
-				},
-				..Default::default()
-			});
-		}
-
-		// Genre chips ("Thể Loại") → search with the "category" filter.
-		let filters: Vec<FilterItem> = GENRES
+	// Featured (banner) — first 5 of the "Mới Cập Nhật" table.
+	if !latest.is_empty() {
+		let links: Vec<Link> = latest
 			.iter()
-			.map(|(name, _)| FilterItem {
-				title: name.to_string(),
-				values: Some(vec![FilterValue::MultiSelect {
-					id: String::from("category"),
-					included: vec![name.to_string()],
-					excluded: Vec::new(),
-				}]),
+			.take(5)
+			.map(|a| Link {
+				title: a.title.clone(),
+				image_url: if a.cover.is_empty() {
+					None
+				} else {
+					Some(a.cover.clone())
+				},
+				value: Some(LinkValue::Anime(a.clone())),
+				..Default::default()
 			})
 			.collect();
 		components.push(HomeComponent {
-			title: Some(String::from("Thể Loại")),
-			value: HomeComponentValue::Filters(filters),
+			title: Some(String::from("Nổi Bật")),
+			value: HomeComponentValue::ImageScroller {
+				links,
+				auto_scroll_interval: Some(5.0),
+				width: Some(800),
+				height: Some(450),
+			},
 			..Default::default()
 		});
 
-		// Quick links to the sections.
-		let links: Vec<Link> = [
-			("danh-sach/phim-moi", "Phim Mới"),
-			("danh-sach/phim-bo", "Phim Bộ"),
-			("danh-sach/phim-le", "Phim Lẻ"),
-			("danh-sach/phim-bo-dang-chieu", "Phim Bộ Đang Chiếu"),
-			("danh-sach/phim-bo-hoan-thanh", "Phim Bộ Hoàn Thành"),
-			("danh-sach/hoat-hinh", "Hoạt Hình"),
-			("danh-sach/phim-chieu-rap", "Phim Chiếu Rạp"),
-			("danh-sach/tv-shows", "TV Shows"),
-		]
-		.iter()
-		.map(|(id, name)| Link {
-			title: name.to_string(),
-			value: Some(LinkValue::Listing(Listing {
-				id: id.to_string(),
-				name: name.to_string(),
-				kind: ListingKind::List,
-			})),
+		// Recently updated (grow episode + date from the table row) — PAGED so
+		// it renders as a compact 2-column grid instead of one long flat list.
+		let first_8 = listed
+			.iter()
+			.take(8)
+			.cloned()
+			.collect::<Vec<AnimeWithEpisode>>();
+		components.push(HomeComponent {
+			title: Some(String::from("Mới Cập Nhật")),
+			value: HomeComponentValue::AnimeEpisodeList {
+				page_size: Some(4),
+				entries: first_8,
+				listing: Some(Listing {
+					id: String::from("danh-sach/phim-moi"),
+					name: String::from("Phim Mới"),
+					kind: ListingKind::List,
+				}),
+			},
 			..Default::default()
+		});
+
+		// The whole table surfaced INLINE as a ranked, paged grid — "Danh Sách"
+		// content shows right on the home instead of chips that only open another
+		// screen ("xem các item luôn").
+		let grid_links: Vec<Link> = listed
+			.iter()
+			.map(|e| Link {
+				title: e.anime.title.clone(),
+				subtitle: e.anime.current_episode.clone(),
+				image_url: if e.anime.cover.is_empty() {
+					None
+				} else {
+					Some(e.anime.cover.clone())
+				},
+				value: Some(LinkValue::Anime(e.anime.clone())),
+				..Default::default()
+			})
+			.collect();
+		components.push(HomeComponent {
+			title: Some(String::from("Phim Mới")),
+			value: HomeComponentValue::AnimeList {
+				ranking: true,
+				page_size: Some(6),
+				entries: grid_links,
+				listing: Some(Listing {
+					id: String::from("danh-sach/phim-moi"),
+					name: String::from("Phim Mới"),
+					kind: ListingKind::List,
+				}),
+			},
+			..Default::default()
+		});
+	}
+
+	// Genre chips ("Thể Loại") → search with the "category" filter.
+	let filters: Vec<FilterItem> = GENRES
+		.iter()
+		.map(|(name, _)| FilterItem {
+			title: name.to_string(),
+			values: Some(vec![FilterValue::MultiSelect {
+				id: String::from("category"),
+				included: vec![name.to_string()],
+				excluded: Vec::new(),
+			}]),
 		})
 		.collect();
-		components.push(HomeComponent {
-			title: Some(String::from("Danh Sách")),
-			value: HomeComponentValue::Links(links),
-			..Default::default()
-		});
+	components.push(HomeComponent {
+		title: Some(String::from("Thể Loại")),
+		value: HomeComponentValue::Filters(filters),
+		..Default::default()
+	});
 
-		Ok(HomeLayout { components })
-	}
+	// Quick links to the remaining sections (shortcuts beside the inline grid).
+	let links: Vec<Link> = [
+		("danh-sach/phim-moi", "Phim Mới"),
+		("danh-sach/phim-bo", "Phim Bộ"),
+		("danh-sach/phim-le", "Phim Lẻ"),
+		("danh-sach/phim-bo-dang-chieu", "Phim Bộ Đang Chiếu"),
+		("danh-sach/phim-bo-hoan-thanh", "Phim Bộ Hoàn Thành"),
+		("danh-sach/hoat-hinh", "Hoạt Hình"),
+		("danh-sach/phim-chieu-rap", "Phim Chiếu Rạp"),
+		("danh-sach/tv-shows", "TV Shows"),
+	]
+	.iter()
+	.map(|(id, name)| Link {
+		title: name.to_string(),
+		value: Some(LinkValue::Listing(Listing {
+			id: id.to_string(),
+			name: name.to_string(),
+			kind: ListingKind::List,
+		})),
+		..Default::default()
+	})
+	.collect();
+	components.push(HomeComponent {
+		title: Some(String::from("Danh Sách")),
+		value: HomeComponentValue::Links(links),
+		..Default::default()
+	});
+
+	components
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1532,8 +1584,14 @@ mod tests {
 			slug_from_path("/phim/33-nguoi-tho-mo"),
 			Some("33-nguoi-tho-mo".into())
 		);
-		assert_eq!(slug_from_path("/the-loai/hanh-dong"), Some("hanh-dong".into()));
-		assert_eq!(slug_from_path("/phim/33-nguoi-tho-mo/"), Some("33-nguoi-tho-mo".into()));
+		assert_eq!(
+			slug_from_path("/the-loai/hanh-dong"),
+			Some("hanh-dong".into())
+		);
+		assert_eq!(
+			slug_from_path("/phim/33-nguoi-tho-mo/"),
+			Some("33-nguoi-tho-mo".into())
+		);
 		assert_eq!(slug_from_path("https://kkphim.com/x"), Some("x".into()));
 		assert_eq!(slug_from_path("/"), None);
 		assert_eq!(page_param("/danh-sach/phim-bo?page=2"), Some(2));
@@ -1553,7 +1611,10 @@ mod tests {
 
 	#[komorei_test]
 	fn classifies_stream_urls() {
-		assert_eq!(detect_stream_type("https://a.kvp726.com/x/index.m3u8"), StreamType::HLS);
+		assert_eq!(
+			detect_stream_type("https://a.kvp726.com/x/index.m3u8"),
+			StreamType::HLS
+		);
 		assert_eq!(detect_stream_type("https://cdn/foo.M3U8"), StreamType::HLS);
 		assert_eq!(detect_stream_type("https://cdn/foo.mp4"), StreamType::MP4);
 		assert_eq!(detect_stream_type("https://cdn/foo.mpd"), StreamType::DASH);
@@ -1619,9 +1680,15 @@ mod tests {
 		assert_eq!(anime.key, "dieu-con-thieu");
 		assert_eq!(anime.title, "Điều Còn Thiếu");
 		assert_eq!(anime.original_title, "The Missing Piece");
-		assert_eq!(anime.release_year.as_ref().map(|y| y.name.as_str()), Some("2024"));
+		assert_eq!(
+			anime.release_year.as_ref().map(|y| y.name.as_str()),
+			Some("2024")
+		);
 		assert_eq!(anime.cover, "https://kkphim.com/uploads/poster.png");
-		assert_eq!(anime.url.as_deref(), Some("https://kkphim.com/phim/dieu-con-thieu"));
+		assert_eq!(
+			anime.url.as_deref(),
+			Some("https://kkphim.com/phim/dieu-con-thieu")
+		);
 	}
 
 	#[komorei_test]
@@ -1651,9 +1718,15 @@ mod tests {
 		assert_eq!(first.key, "33-nguoi-tho-mo");
 		assert_eq!(first.title, "33 Người Thợ Mỏ");
 		assert_eq!(first.original_title, "The 33");
-		assert_eq!(first.cover, "https://phimimg.com/upload/vod/20231113-1/bcd21adf3bfd735e07f5a2e2b9513743.jpg");
+		assert_eq!(
+			first.cover,
+			"https://phimimg.com/upload/vod/20231113-1/bcd21adf3bfd735e07f5a2e2b9513743.jpg"
+		);
 		assert_eq!(first.rating, Some(6.4));
-		assert_eq!(first.release_year.as_ref().map(|y| y.name.as_str()), Some("2015"));
+		assert_eq!(
+			first.release_year.as_ref().map(|y| y.name.as_str()),
+			Some("2015")
+		);
 		assert_eq!(first.current_episode.as_deref(), Some("Full"));
 		assert_eq!(first.status, AnimeStatus::Completed);
 		assert_eq!(first.quality_tag.as_deref(), Some("Phim Lẻ"));
@@ -1667,7 +1740,10 @@ mod tests {
 		assert_eq!(second.title, "Điều Còn Thiếu");
 		assert_eq!(second.current_episode.as_deref(), Some("Tập 6"));
 		assert_eq!(second.status, AnimeStatus::Ongoing);
-		assert_eq!(second.release_year.as_ref().map(|y| y.name.as_str()), Some("2024"));
+		assert_eq!(
+			second.release_year.as_ref().map(|y| y.name.as_str()),
+			Some("2024")
+		);
 	}
 
 	#[komorei_test]
@@ -1683,7 +1759,10 @@ mod tests {
 		assert_eq!(detail.current_episode.as_deref(), Some("Full"));
 		assert_eq!(detail.rating, Some(6.4));
 		assert_eq!(detail.rating_count, Some(1014));
-		assert_eq!(detail.genres, vec!["Chính Kịch".to_string(), "Lịch Sử".to_string()]);
+		assert_eq!(
+			detail.genres,
+			vec!["Chính Kịch".to_string(), "Lịch Sử".to_string()]
+		);
 		assert_eq!(detail.countries, vec!["Âu Mỹ".to_string()]);
 		let desc = detail.description.as_deref().unwrap_or("");
 		assert!(desc.contains("33 người thợ mỏ"));
@@ -1720,5 +1799,52 @@ mod tests {
 		assert_eq!(ep.episode_number, "1"); // "Full" has no digits
 		assert_eq!(ep.date_uploaded, Some(1_790_027_735_000));
 		assert_eq!(ep.thumbnail.as_deref(), Some(anime.cover.as_str()));
+	}
+
+	#[komorei_test]
+	fn home_layout_surfaces_every_row_inline() {
+		let doc = Html::parse(ROW_HTML).unwrap();
+		let rows = doc.select("table.data-table tbody tr").unwrap();
+		let mut listed: Vec<AnimeWithEpisode> = Vec::new();
+		for i in 0..rows.size() {
+			if let Some(row) = rows.get(i)
+				&& let Some(anime) = parse_list_row(&row, "https://kkphim.com")
+			{
+				let episode = row_home_episode(&anime, &row);
+				listed.push(AnimeWithEpisode { anime, episode });
+			}
+		}
+		let comps = home_components(&listed);
+
+		// 0 = "Nổi Bật" banner, 1 = "Mới Cập Nhật" — PAGED, not one flat list.
+		assert!(matches!(
+			&comps[1].value,
+			HomeComponentValue::AnimeEpisodeList {
+				page_size: Some(4),
+				..
+			}
+		));
+		// 2 = "Phim Mới" — the whole table INLINE as a ranked, paged grid
+		// (every row goes to the home, not behind a link chip).
+		match &comps[2].value {
+			HomeComponentValue::AnimeList {
+				ranking,
+				page_size,
+				entries,
+				..
+			} => {
+				assert!(*ranking);
+				assert_eq!(*page_size, Some(6));
+				assert_eq!(entries.len(), listed.len());
+				assert!(!entries.is_empty());
+				assert!(entries.iter().all(|l| l.value.is_some()));
+			}
+			other => panic!("expected an inline AnimeList grid, got {:?}", other),
+		}
+		// The section shortcuts still close the layout.
+		assert!(matches!(
+			&comps[comps.len() - 1].value,
+			HomeComponentValue::Links(_)
+		));
 	}
 }
