@@ -1,0 +1,30 @@
+[package]
+name = "nguonphime-source"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+komorei = { path = "../../../komorei-sdk/crates/lib", features = ["json"] }
+# Direct dep because serde's derive macro expands to `::serde` paths.
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+# The stream resolution decodes the obfuscated playlist JSON hidden in the
+# grab iframe page (base64 → `JSON.parse(atob(...))`) and posts/parses the
+# watch-page XHR envelopes, so serde_json is used directly.
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+komorei = { path = "../../../komorei-sdk/crates/lib", features = ["test"] }
+komorei-test = { path = "../../../komorei-sdk/crates/test-macro" }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+strip = true
+lto = true

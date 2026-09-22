@@ -1,0 +1,17 @@
+{
+	"info": {
+		"id": "vi.nguonphime",
+		"name": "Nguồn Phim (Web)",
+		"altNames": [
+			"NguonPhim site",
+			"nguonphime.site",
+			"Nguồn 360"
+		],
+		"version": 1,
+		"url": "https://nguonphime.site",
+		"contentRating": 0,
+		"languages": [
+			"vi"
+		]
+	}
+}
