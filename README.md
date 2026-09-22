@@ -35,6 +35,7 @@ the source `info.id` (e.g. `vi.ophim`):
 │   ├── vi.ophim/        OPhim API (classic ophim1.com + flat fork phimapi.com)
 │   ├── vi.kkphim/       KKPhim HTML scrape (m3u8 links, configurable base URL)
 │   ├── vi.nguonc/       Nguồn C API (JWPlayer + bootstrap/issue embed grant, HLS)
+│   ├── vi.nguonphim/    Nguồn Phim API (api.nguonphim.net — same engine as vi.nguonc)
 │   └── vi.fake-source/  SAMPLE source: fully fake data (runs offline, no network)
 ├── templates/           shared template crates for similar sites
 └── public/              generated source list (gitignored, deployed by CI)
