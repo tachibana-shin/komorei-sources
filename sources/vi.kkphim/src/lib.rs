@@ -1073,8 +1073,10 @@ impl Home for KkphimSource {
 
 /// Build the home layout's components from the parsed "Mới Cập Nhật" table
 /// rows. Pure (no network) — every row is surfaced INLINE instead of deferred
-/// behind link chips: banner + a paged recent-updates list + a paged "Phim Mới"
-/// grid of the whole table, then genre chips and the section shortcuts.
+/// behind link chips: banner + a paged recent-updates grid + a horizontal
+/// "Phim Mới" rail of the whole table, then genre chips and the section
+/// shortcuts. Each section uses a DIFFERENT component kind so the home reads
+/// varied (banner / compact grid / poster rail / chips / links).
 fn home_components(listed: &[AnimeWithEpisode]) -> Vec<HomeComponent> {
 	let latest: Vec<Anime> = listed.iter().map(|e| e.anime.clone()).collect();
 
@@ -1128,10 +1130,11 @@ fn home_components(listed: &[AnimeWithEpisode]) -> Vec<HomeComponent> {
 			..Default::default()
 		});
 
-		// The whole table surfaced INLINE as a ranked, paged grid — "Danh Sách"
+		// The whole table surfaced INLINE as a horizontal poster rail — "Danh Sách"
 		// content shows right on the home instead of chips that only open another
-		// screen ("xem các item luôn").
-		let grid_links: Vec<Link> = listed
+		// screen ("xem các item luôn"), and it reads differently from the compact
+		// "Mới Cập Nhật" grid above (a Scroller rail vs AnimeEpisodeList pages).
+		let scroller_links: Vec<Link> = listed
 			.iter()
 			.map(|e| Link {
 				title: e.anime.title.clone(),
@@ -1147,10 +1150,8 @@ fn home_components(listed: &[AnimeWithEpisode]) -> Vec<HomeComponent> {
 			.collect();
 		components.push(HomeComponent {
 			title: Some(String::from("Phim Mới")),
-			value: HomeComponentValue::AnimeList {
-				ranking: true,
-				page_size: Some(6),
-				entries: grid_links,
+			value: HomeComponentValue::Scroller {
+				entries: scroller_links,
 				listing: Some(Listing {
 					id: String::from("danh-sach/phim-moi"),
 					name: String::from("Phim Mới"),
@@ -1824,22 +1825,24 @@ mod tests {
 				..
 			}
 		));
-		// 2 = "Phim Mới" — the whole table INLINE as a ranked, paged grid
-		// (every row goes to the home, not behind a link chip).
+		// 2 = "Phim Mới" — the whole table INLINE as a horizontal poster rail
+		// (every row goes to the home, not behind a link chip; a Scroller so it
+		// reads differently from the "Mới Cập Nhật" grid above).
 		match &comps[2].value {
-			HomeComponentValue::AnimeList {
-				ranking,
-				page_size,
+			HomeComponentValue::Scroller {
 				entries,
+				listing,
 				..
 			} => {
-				assert!(*ranking);
-				assert_eq!(*page_size, Some(6));
 				assert_eq!(entries.len(), listed.len());
 				assert!(!entries.is_empty());
 				assert!(entries.iter().all(|l| l.value.is_some()));
+				assert_eq!(
+					listing.as_ref().map(|l| l.id.as_str()),
+					Some("danh-sach/phim-moi")
+				);
 			}
-			other => panic!("expected an inline AnimeList grid, got {:?}", other),
+			other => panic!("expected an inline Scroller rail, got {:?}", other),
 		}
 		// The section shortcuts still close the layout.
 		assert!(matches!(
