@@ -1,0 +1,17 @@
+{
+	"info": {
+		"id": "vi.nguonphim",
+		"name": "Nguồn Phim",
+		"altNames": [
+			"NguonPhim",
+			"NP",
+			"Nguồn Phim API"
+		],
+		"version": 1,
+		"url": "https://api.nguonphim.net",
+		"contentRating": 0,
+		"languages": [
+			"vi"
+		]
+	}
+}
