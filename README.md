@@ -57,12 +57,33 @@ sources/<id>/
 ├── res/
 │   ├── source.json       # manifest (info.id/name/version/url/languages/contentRating)
 │   └── icon.png          # source icon (128x128, opaque)
-└── src/lib.rs            # komorei-sdk trait implementations + register_source!
+└── src/
+    ├── lib.rs            # komorei-sdk trait impls + register_source!
+    ├── catalog.rs        # site constants, genre/country catalogs, listings
+    ├── models.rs         # JSON envelopes + parsed metadata bags
+    ├── parsers.rs        # HTML/jsoup parsing (cards, detail, playlists, …)
+    ├── net.rs            # fetch + stream resolution
+    ├── home.rs           # Home layout
+    └── tests.rs          # komorei_test fixtures (run via komorei-test-runner)
 ```
 
 The `source.json` ships in the package with the `Payload/{main.wasm,
 source.json, icon.png}` layout (read by `KrxManager.readInfo` /
-`extractMainWasm` in the app).
+`extractMainWasm` in the app). Splitting a source into `models.rs`-style
+modules is the norm once it outgrows a single file — keep the behavior
+identical and the `cargo test` suite green.
+
+> **Icons**: all sources share the **Komorei brand icon** (the app's header
+> logo, `app/src/main/res/drawable/ic_anime_logo.jpg`, downscaled 128×128
+> opaque PNG). There are no per-site icons — regenerate with one magick call +
+> `komorei repo build` whenever the logo changes.
+
+> **Base64 & crypto**: `komorei::imports::base64::{encode, decode}` and
+> `komorei::imports::crypto::{md5, sha1, sha256, hmac_sha1, hmac_sha256}` are
+> implemented natively by the runner (no wasm→host round trip) and by the SDK
+> test host, so `cargo test` exercises the same code the app runs. Prefer them
+> over a self-written decoder — smaller wasm, and the decode tolerates all
+> four common base64 variants.
 
 ## Development
 
