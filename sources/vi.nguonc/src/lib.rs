@@ -1074,7 +1074,7 @@ impl Home for NguoncSource {
 			components.push(HomeComponent {
 				title: Some(String::from("Mới Cập Nhật")),
 				value: HomeComponentValue::AnimeEpisodeList {
-					page_size: None,
+					page_size: Some(4),
 					entries: listed,
 					listing: Some(Listing {
 						id: String::from("latest"),
@@ -1128,7 +1128,7 @@ impl Home for NguoncSource {
 				title: Some(String::from("Phim Lẻ")),
 				value: HomeComponentValue::AnimeList {
 					ranking: false, /* list is ordered by update, not popularity */
-					page_size: None,
+					page_size: Some(4),
 					entries,
 					listing: Some(Listing {
 						id: String::from("phim-le"),
