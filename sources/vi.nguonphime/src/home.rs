@@ -95,7 +95,7 @@ impl Home for NguonphimeSource {
 			components.push(HomeComponent {
 				title: Some(String::from("Mới Cập Nhật")),
 				value: HomeComponentValue::AnimeEpisodeList {
-					page_size: None,
+					page_size: Some(4),
 					entries: listed,
 					listing: Some(Listing {
 						id: String::from("tuy-chon/phim-moi.html?ft=ne&ne=1"),
@@ -149,7 +149,7 @@ impl Home for NguonphimeSource {
 				title: Some(String::from("Phim Lẻ")),
 				value: HomeComponentValue::AnimeList {
 					ranking: false,
-					page_size: None,
+					page_size: Some(4),
 					entries,
 					listing: Some(Listing {
 						id: String::from("tuy-chon/phim-le.html?ft=ty&ty=1"),
