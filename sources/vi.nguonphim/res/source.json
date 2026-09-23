@@ -7,8 +7,8 @@
 			"NP",
 			"Nguồn Phim API"
 		],
-		"version": 1,
-		"url": "https://api.nguonphim.net",
+		"version": 2,
+		"url": "https://phim.nguonc.com",
 		"contentRating": 0,
 		"languages": [
 			"vi"

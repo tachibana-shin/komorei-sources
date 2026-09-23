@@ -1,16 +1,17 @@
 //! # Nguồn Phim source (`vi.nguonphim`)
 //!
-//! Scrapes the **Nguồn Phim** REST API at `https://api.nguonphim.net` — the
-//! "Nguồn" movie network that also runs `phim.nguonc.com` (Nguồn C) and the
-//! OnTV fronts (`ngontv.com`, `nguonphim.net`, `nguonphime.site`). The API is
-//! served from the `api.*` vhosts of that box — mirrors:
-//! `api.ngontv.com`, `api.nguonphime.site` (swap via the `base_url` setting).
+//! Scrapes the **Nguồn Phim** REST API — the "Nguồn" movie network that also
+//! runs `phim.nguonc.com` (Nguồn C) and the OnTV fronts (`ngontv.com`,
+//! `nguonphim.net`, `nguonphime.site`). The API is served from the `api.*`
+//! vhosts of that box (mirrors: `api.ngontv.com`, `api.nguonphime.site`,
+//! swap via the `base_url` setting), but those commonly fall over ("dừng hoạt
+//! động để nâng cấp") while the canonical `phim.nguonc.com` vhost keeps
+//! answering — so [DEFAULT_BASE] points there (the same engine Nguồn C uses).
 //! The web fronts bounce through an "NP Checker" interstitial
 //! (`nguonphime.site/site/site/embed/?url=…`, sets a PHP session then JS
-//! forwards), but the `api.*` hosts answer directly. Note: the API was under
-//! maintenance ("dừng hoạt động để nâng cấp") when this source was written —
-//! the endpoint shapes below follow the network's nguonc-style engine
-//! (`/api-document` on `phim.nguonc.com`) and are exercised in-wasm offline:
+//! forwards), but the API hosts answer directly. The endpoint shapes below
+//! follow the network's nguonc-style engine (`/api-document` on
+//! `phim.nguonc.com`) and are exercised in-wasm offline:
 //!
 //! - lists: `GET /api/films/phim-moi-cap-nhat?page=N` (latest),
 //!   `GET /api/films/danh-sach/{slug}?page=N` (phim-bo/phim-le/tv-shows/
@@ -89,7 +90,7 @@ use komorei::{
 };
 
 const SOURCE_ID: &str = "vi.nguonphim";
-const DEFAULT_BASE: &str = "https://api.nguonphim.net";
+const DEFAULT_BASE: &str = "https://phim.nguonc.com";
 const SETTING_BASE_URL: &str = "base_url";
 const SETTING_LAST_NOTIFICATION: &str = "last_notification";
 
@@ -1266,7 +1267,7 @@ impl DynamicFilters for NguonphimSource {
 			}
 			.into(),
 			Filter::note(
-				"Nguồn dữ liệu từ Nguồn Phim (https://api.nguonphim.net). Link phát được cấp quyền theo tập qua máy chủ embed.",
+				"Nguồn dữ liệu từ Nguồn Phim (mặc định https://phim.nguonc.com — đổi qua cài đặt `base_url`). Link phát được cấp quyền theo tập qua máy chủ embed.",
 			),
 		])
 	}
