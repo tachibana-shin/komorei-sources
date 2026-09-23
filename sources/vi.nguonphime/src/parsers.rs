@@ -272,14 +272,24 @@ pub(crate) fn parse_list_page(doc: &Document, base: &str, page: i32) -> (Vec<Ani
 	(out, has_next_page(doc, page))
 }
 
-/// Parse the live-search dropdown (`li.result-item a[href*="-f"]`).
+/// Parse the live-search dropdown (`li.result-item`). The site nests `<a>`
+/// links (country/year) INSIDE the film `<a>` — invalid HTML that jsoup
+/// resolves by SPLITTING the outer anchor into sibling fragments: the first
+/// fragment keeps the href/title on every copy, but only one of them carries
+/// the cover `<img>`. Reading the cover from the *anchor* therefore loses it
+/// (the dedup keeps the first, img-less fragment). All fields are read per
+/// `li` instead: link/title from the first film anchor (its attrs are cloned
+/// onto every fragment), cover + original title from the li.
 pub(crate) fn parse_search_items(doc: &Document, base: &str) -> Vec<Anime> {
 	let mut out: Vec<Anime> = Vec::new();
-	let Some(items) = doc.select("li.result-item a[href]") else {
+	let Some(items) = doc.select("li.result-item") else {
 		return out;
 	};
 	for i in 0..items.size() {
-		let Some(a) = items.get(i) else { continue };
+		let Some(li) = items.get(i) else { continue };
+		let Some(a) = li.select_first("a[href*='-f'][href$='.html']") else {
+			continue;
+		};
 		let Some(href) = a.attr("href") else { continue };
 		let path = href.trim_start_matches('/');
 		if !path.contains("-f") || !path.ends_with(".html") {
@@ -289,13 +299,13 @@ pub(crate) fn parse_search_items(doc: &Document, base: &str) -> Vec<Anime> {
 		if title.is_empty() {
 			continue;
 		}
-		let original = a
+		let original = li
 			.select_first(".result-item-title-en")
 			.and_then(|e| e.text())
 			.map(|t| t.trim().to_string())
 			.unwrap_or_default();
-		let cover = a
-			.select_first("img")
+		let cover = li
+			.select_first(".result-item-image img")
 			.and_then(|i| i.attr("src"))
 			.and_then(absolutize);
 		let key = path.trim_end_matches(".html").to_string();
