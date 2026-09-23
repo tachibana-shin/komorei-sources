@@ -9,7 +9,8 @@ use komorei::{
 	DynamicSettings, Episode, Filter, FilterItem, FilterValue, Home, HomeComponent,
 	HomeComponentValue, HomeLayout, Link, LinkValue, Listing, ListingKind, ListingProvider,
 	MigrationHandler, MultiSelectFilter, NotificationHandler, RangeFilter, RangeLong, Result,
-	SegmentDataInterceptor, SegmentUrlInterceptor, SelectFilter, Setting, SortFilter, Source,
+	RecommendationsHandler, SegmentDataInterceptor, SegmentUrlInterceptor, SelectFilter, Setting,
+	SortFilter, Source,
 	StreamData, StreamInfo, StreamType, SubtitleInfo, TextFilter, ToggleSetting,
 	imports::defaults::{DefaultValue, defaults_get, defaults_set},
 	prelude::*,
@@ -1356,6 +1357,36 @@ impl MigrationHandler for FakeViSource {
 	}
 }
 
+// ── RecommendationsHandler ──────────────────────────────────────────────────
+
+impl RecommendationsHandler for FakeViSource {
+	/// Same-genre catalog titles, most shared genres first. This is what a real
+	/// source WITH a "related" endpoint would return; the fake uses the same
+	/// genre-overlap ranking so the SDK round-trip is exercised end-to-end.
+	fn get_recommended_anime(&self, anime: Anime) -> Result<AnimePageResult> {
+		let current_genres: Vec<&str> = anime.genres.iter().map(|g| g.name.as_str()).collect();
+		let mut related: Vec<(usize, Anime)> = CATALOG
+			.iter()
+			.map(|e| build_lite(e))
+			.filter(|a| a.key != anime.key)
+			.map(|a| {
+				let overlap = a
+					.genres
+					.iter()
+					.filter(|g| current_genres.contains(&g.name.as_str()))
+					.count();
+				(overlap, a)
+			})
+			.filter(|(overlap, _)| *overlap > 0)
+			.collect();
+		related.sort_by(|a, b| b.0.cmp(&a.0));
+		Ok(AnimePageResult {
+			entries: related.into_iter().map(|(_, a)| a).collect(),
+			has_next_page: false,
+		})
+	}
+}
+
 // ── Segment interceptors ────────────────────────────────────────────────────
 
 impl SegmentUrlInterceptor for FakeViSource {
@@ -1387,6 +1418,7 @@ register_source!(
 	NotificationHandler,
 	DeepLinkHandler,
 	MigrationHandler,
+	RecommendationsHandler,
 	SegmentUrlInterceptor,
 	SegmentDataInterceptor
 );
