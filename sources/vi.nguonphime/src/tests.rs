@@ -88,7 +88,10 @@ setTimeout(function() { window.location.href = "https://nguonphime.site/"; },100
 </script>
 Chào mừng bạn đến với chúng tôi, chúc bạn luôn xem phim vui vẻ nhé! Xin vui lòng chờ trong giây lát để chuyển trang!</body></html>"#;
 
-/// The live-search dropdown html.
+/// The live-search dropdown html — the site nests country/year `<a>` links
+/// INSIDE the film `<a>` (invalid HTML; jsoup splits the outer anchor into
+/// fragments, the first one img-less). The fixture mirrors that shape so the
+/// parser's per-`li` extraction is exercised.
 const SEARCH_HTML: &str = r#"<div class="result-group">Phim</div>
 <div class="result border-bottom"><ul>
 	<li class="result-item">
@@ -98,6 +101,21 @@ const SEARCH_HTML: &str = r#"<div class="result-group">Phim</div>
 				<div class="result-item-content">
 					<p class="result-item-title">Hương Mộc Lan</p>
 					<p class="result-item-title result-item-title-en">Magnolia</p>
+					<div class="result-item-price"><p>
+						<span><i class="fa fa-globe"></i><a href="/tuy-chon/trung-quoc.html?ft=co&co=CN" title="Trung Quốc">CN</a></span>
+						<span><i class="fa fa-clock-o"></i><a href="/tuy-chon/2026.html?ft=ye&ye=2026" title="2026">2026</a></span>
+					</p></div>
+				</div>
+			</div>
+		</a>
+	</li>
+	<li class="result-item">
+		<a href="/naruto-boruto-boruto-naruto-the-movie-f16721.html" title="Naruto Boruto">
+			<div class="result-item-box clearfix">
+				<div class="result-item-image"><img src="https://nps3.nguon360.com/static/media/images/film/phimbathu/s100_200/boruto-naruto-the-movie--2015-201511915-1496783494.png" alt="Naruto Boruto"/></div>
+				<div class="result-item-content">
+					<p class="result-item-title">Naruto Boruto</p>
+					<p class="result-item-title result-item-title-en">Boruto: Naruto The Movie</p>
 				</div>
 			</div>
 		</a>
@@ -224,11 +242,17 @@ fn checker_page_is_detected() {
 fn search_items_parse_from_dropdown() {
 	let doc = Html::parse(SEARCH_HTML).expect("search parses");
 	let items = parse_search_items(&doc, DEFAULT_BASE);
-	assert_eq!(items.len(), 1);
+	assert_eq!(items.len(), 2);
+	// The FIRST item mirrors the live site's misnesting (country/year `<a>`s
+	// inside the film `<a>`) — the cover must survive it.
 	assert_eq!(items[0].key, "huong-moc-lan-magnolia-f38120");
 	assert_eq!(items[0].title, "Hương Mộc Lan");
-	assert_eq!(items[0].original_title, "Magnolia");
 	assert!(items[0].cover.contains("huong-moc-lan-1589588429.jpg"));
+	// The second (clean markup) item carries its original title too.
+	assert_eq!(items[1].key, "naruto-boruto-boruto-naruto-the-movie-f16721");
+	assert_eq!(items[1].title, "Naruto Boruto");
+	assert_eq!(items[1].original_title, "Boruto: Naruto The Movie");
+	assert!(items[1].cover.contains("boruto-naruto-the-movie--2015-201511915-1496783494.png"));
 }
 
 #[komorei_test]
