@@ -15,7 +15,7 @@ jobs:
     name: Verify sources
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -23,7 +23,8 @@ jobs:
 
       - name: Install komorei CLI
         run: |
-          git clone --depth 1 https://github.com/komorei-sdk/komorei-sdk.git /tmp/komorei-sdk
+          set -euo pipefail
+          git clone --depth 1 https://github.com/tachibana-shin/komorei-sdk.git /tmp/komorei-sdk
           cargo install --path /tmp/komorei-sdk/crates/cli --locked
 
       - name: Build and verify sources
@@ -33,7 +34,7 @@ jobs:
     name: Rust formatting and Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
