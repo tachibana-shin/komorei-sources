@@ -45,8 +45,11 @@ jobs:
       - name: Install komorei CLI
         run: |
           set -euo pipefail
-          git clone --depth 1 https://github.com/tachibana-shin/komorei-sdk.git /tmp/komorei-sdk
-          cargo install --path /tmp/komorei-sdk/crates/cli --locked
+          # Every source crate depends on `../../../komorei-sdk/crates/lib`, so the
+          # SDK has to sit NEXT TO this repository's root, not inside it.
+          sdk_dir="$GITHUB_WORKSPACE/../komorei-sdk"
+          git clone --depth 1 https://github.com/tachibana-shin/komorei-sdk.git "$sdk_dir"
+          cargo install --path "$sdk_dir/crates/cli" --locked
 
       - name: Build sources
         run: komorei repo build --root . --output public
