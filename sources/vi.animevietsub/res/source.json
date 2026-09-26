@@ -1,0 +1,17 @@
+{
+	"info": {
+		"id": "vi.animevietsub",
+		"name": "AnimeVietsub",
+		"altNames": [
+			"Anime Viet Sub",
+			"animevietsub.li",
+			"AVS"
+		],
+		"version": 1,
+		"url": "https://animevietsub.li",
+		"contentRating": 0,
+		"languages": [
+			"vi"
+		]
+	}
+}
