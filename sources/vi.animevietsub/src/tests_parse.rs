@@ -6,6 +6,7 @@
 //! catch a site redesign before it reaches a user's screen.
 
 use alloc::{
+	format,
 	string::{String, ToString},
 	vec,
 	vec::Vec,
@@ -779,4 +780,138 @@ fn catalogue_links_cover_listings_and_boards() {
 	assert!(ids.contains(&"bang-xep-hang/voted.html"));
 	// `week` is not one of the site's boards, so nothing may link to it.
 	assert!(!ids.iter().any(|id| id.contains("week")));
+}
+
+// ── recommendations via `extra` ────────────────────────────────────────────
+
+/// The detail page carries its own "Gợi ý cùng người xem" rail. Throwing it
+/// away means the app re-requests the page it just parsed, so the cards are
+/// stashed in `extra` and served back with no request at all.
+#[komorei_test]
+fn detail_stashes_its_recommendation_rail_in_extra() {
+	let anime = crate::parsers::parse_detail(&doc(DETAIL));
+	let entries = crate::parsers::recommendations_from_extra(&anime);
+	assert!(
+		!entries.is_empty(),
+		"the rail parsed empty or was not stashed"
+	);
+
+	// Every entry must be usable as-is: the app renders these without another
+	// `getAnimeUpdate`, so a card missing its key or cover is a broken row.
+	for entry in &entries {
+		assert!(!entry.key.is_empty(), "a stashed card has no key");
+		assert_eq!(entry.source_id, crate::catalog::SOURCE_ID);
+		assert!(!entry.title.is_empty(), "`{}` has no title", entry.key);
+		assert!(!entry.cover.is_empty(), "`{}` has no cover", entry.key);
+	}
+	// Keys are what a deep link resolves, so they must round-trip through the
+	// source's own router.
+	for entry in &entries {
+		assert_eq!(
+			Some(entry.key.as_str()),
+			crate::parsers::anime_key_of(&format!("/phim/{}/", entry.key)),
+			"`{}` is not a bare anime key",
+			entry.key
+		);
+	}
+	// The rail is a carousel of distinct titles; a duplicate would repeat itself.
+	let mut keys: Vec<&str> = entries.iter().map(|e| e.key.as_str()).collect();
+	let total = keys.len();
+	keys.sort_unstable();
+	keys.dedup();
+	assert_eq!(keys.len(), total, "duplicate recommendation keys");
+}
+
+/// The stash is the read half of the same key, so what goes in must come back
+/// out unchanged — this is what lets `get_recommended_anime` skip the network.
+#[komorei_test]
+fn stashed_recommendations_round_trip_intact() {
+	let anime = crate::parsers::parse_detail(&doc(DETAIL));
+	let first = crate::parsers::recommendations_from_extra(&anime);
+	// A second read, and then a read of an anime carrying the same stash, must
+	// both be identical: nothing is consumed or mutated by handing it over.
+	assert_eq!(first, crate::parsers::recommendations_from_extra(&anime));
+
+	let carried = Anime {
+		key: String::from("some-other-anime"),
+		..anime.clone()
+	};
+	assert_eq!(first, crate::parsers::recommendations_from_extra(&carried));
+}
+
+/// A page with no recommendation rail must not invent an entry — an absent key
+/// is what a caller checks for, and it is what triggers the request fallback.
+#[komorei_test]
+fn detail_without_a_recommendation_rail_omits_the_extra() {
+	let anime = crate::parsers::parse_detail(&doc(
+		r#"<article class="TPost Single"><h1 class="Title">Solo</h1>
+		   <div class="Description">No rail here.</div></article>"#,
+	));
+	assert_eq!(anime.title, "Solo");
+	assert!(
+		!anime
+			.extra
+			.contains_key(crate::parsers::EXTRA_RECOMMENDATIONS),
+		"a page with no rail must not report recommendations"
+	);
+	assert!(
+		crate::parsers::recommendations_from_extra(&anime).is_empty(),
+		"a missing stash must read back as empty, not as an error"
+	);
+}
+
+/// `extra` is one flat namespace shared by every source, so a source's key must
+/// carry its own prefix or it can shadow another's.
+#[komorei_test]
+fn recommendation_key_is_namespaced_by_source() {
+	assert!(
+		crate::parsers::EXTRA_RECOMMENDATIONS.contains("avs."),
+		"the key must be namespaced, got `{}`",
+		crate::parsers::EXTRA_RECOMMENDATIONS
+	);
+}
+
+// ── get_recommended_anime ──────────────────────────────────────────────────
+
+/// The whole point of stashing the rail: with the stash present the source
+/// answers from `anime.extra` and touches no network. A test that cannot prove
+/// "no request" can at least prove the answer is the stash, byte for byte.
+#[komorei_test]
+fn recommended_anime_serves_the_stash_without_parsing_again() {
+	use komorei::RecommendationsHandler;
+
+	let detail = crate::parsers::parse_detail(&doc(DETAIL));
+	let stashed = crate::parsers::recommendations_from_extra(&detail);
+	assert!(!stashed.is_empty(), "the fixture page must carry a rail");
+
+	// The app hands back the very anime it was given, extras included.
+	let page = crate::AnimeVietsubSource::new()
+		.get_recommended_anime(detail.clone())
+		.expect("recommendations");
+
+	assert_eq!(page.entries, stashed);
+	assert!(!page.has_next_page, "the rail is one page, never paged");
+}
+
+/// The app re-queries this for every anime it opens, and an anime opened
+/// straight from a listing was never upgraded, so it carries no stash.
+///
+/// That case falls back to re-fetching the detail page, which is the only way to
+/// stay correct if the site ever moves the rail off it. It is deliberately NOT
+/// covered here: the test host has no stub for the network, so such a test would
+/// reach the live site and assert on whatever it answered today. What is worth
+/// pinning down is the half that makes the stash worth having — see
+/// `recommended_anime_serves_the_stash_without_parsing_again`.
+#[komorei_test]
+fn a_lite_card_carries_no_recommendations() {
+	let lite = Anime {
+		key: String::from("some-anime"),
+		source_id: crate::catalog::SOURCE_ID.into(),
+		title: String::from("Some Anime"),
+		..Default::default()
+	};
+	// A Lite card is what a listing produces, and it must not be mistaken for
+	// "this anime has no recommendations" — the app is expected to ask again.
+	assert!(lite.extra.is_empty());
+	assert!(crate::parsers::recommendations_from_extra(&lite).is_empty());
 }

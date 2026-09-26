@@ -17,7 +17,7 @@ use alloc::{
 };
 
 use komorei::{
-	Anime, AnimeSeason, AnimeStatus, CategoryLink, Episode, Filter, FilterValue, Listing,
+	Anime, AnimeSeason, AnimeStatus, CategoryLink, Episode, Filter, FilterValue, HashMap, Listing,
 	ListingKind, MultiSelectFilter, SelectFilter,
 	helpers::uri::encode_uri_component,
 	imports::html::{Document, Element},
@@ -523,8 +523,61 @@ pub fn parse_detail(doc: &Document) -> Anime {
 		countries,
 		seasons,
 		quality_tag,
+		extra: extra_extras(doc),
 		..Default::default()
 	}
+}
+
+/// The `extra` map a detail page hands over for free.
+///
+/// The page's own "Gợi ý cùng người xem" rail is a full set of cards sitting
+/// right there in the markup we just parsed. The app re-queries
+/// `get_recommended_anime` every time a new anime is opened, so throwing this
+/// away means re-fetching a page we already have — the cards are serialised into
+/// [EXTRA_RECOMMENDATIONS] instead and read back with no request at all.
+///
+/// The key is namespaced by source because `extra` is one flat namespace shared
+/// by every source; an unprefixed key would let one source shadow another's.
+fn extra_extras(doc: &Document) -> HashMap<String, String> {
+	let mut extra = HashMap::new();
+	let recommendations = parse_recommendations(doc);
+	if !recommendations.is_empty() {
+		// `Anime` is `serde::Serialize`, so the Lite cards go in as they are. A
+		// failure is dropped rather than raised: a page that cannot be stashed is
+		// still a perfectly good detail page, it just falls back to a re-fetch.
+		if let Ok(json) = serde_json::to_string(&recommendations) {
+			extra.insert(EXTRA_RECOMMENDATIONS.into(), json);
+		}
+	}
+	extra
+}
+
+/// The detail page's own recommendation rail, as Lite cards, in site order.
+///
+/// `.MovieListRelated` is this site's "suggested for people who watched this"
+/// block. The heading is matched as well as the class, so a deployment that
+/// renames the wrapper but keeps the heading still resolves.
+pub fn parse_recommendations(doc: &Document) -> Vec<Anime> {
+	parse_cards(doc, RECOMMENDATION_RAIL)
+}
+
+/// The `extra` key the recommendations are stored under.
+pub const EXTRA_RECOMMENDATIONS: &str = "avs.recommendations";
+
+/// The recommendation rail on a detail page.
+pub const RECOMMENDATION_RAIL: &str = ".MovieListRelated .TPostMv";
+
+/// The recommendations stashed on `anime` by [extra_extras], or an empty list
+/// when the page carried none.
+///
+/// This is the read half of [EXTRA_RECOMMENDATIONS], called by
+/// `get_recommended_anime` with whatever anime the app already holds.
+pub fn recommendations_from_extra(anime: &Anime) -> Vec<Anime> {
+	anime
+		.extra
+		.get(EXTRA_RECOMMENDATIONS)
+		.and_then(|json| serde_json::from_str(json).ok())
+		.unwrap_or_default()
 }
 
 /// The labelled `.InfoList` rows of one metadata column.

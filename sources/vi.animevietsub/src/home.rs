@@ -22,8 +22,10 @@ use alloc::{
 };
 
 use komorei::{
-	Anime, FilterItem, FilterValue, HomeComponent, HomeComponentValue, HomeLayout, Link, LinkValue,
-	Listing, ListingKind, Result, imports::html::Document, prelude::println,
+	Anime, FilterItem, FilterValue, HomeComponent, HomeComponentValue, HomeLayout,
+	HomePartialResult, Link, LinkValue, Listing, ListingKind, Result,
+	imports::{html::Document, std::send_partial_result},
+	prelude::println,
 };
 
 use crate::{
@@ -81,12 +83,28 @@ const RAILS: [Rail; 4] = [
 ];
 
 /// Build the home layout from the site's front page.
+///
+/// The four poster rails all come out of the one front-page request, so they
+/// cannot stream independently — but the ranking board is a **second** request,
+/// and it is the slowest one. Sending the layout as soon as the first response
+/// is parsed means the poster rails are on screen while the board is still being
+/// fetched, instead of the whole page waiting on it.
+///
+/// The layout returned here is still authoritative: a host that does not
+/// support streaming renders exactly this, and the two must agree.
 pub fn build(base: &str) -> Result<HomeLayout> {
 	let doc = fetch_html(&format!("{base}/"))?;
 	let mut layout = from_document(&doc);
+
+	// Paint what is already here before going back to the network.
+	send_partial_result(&HomePartialResult::Layout(HomeLayout {
+		components: layout.components.clone(),
+	}));
+
 	// The ranking boards are a second request. Appending them after the layout is
 	// already assembled means the first paint does not wait for them.
 	if let Some(board) = fetch_ranking(base) {
+		send_partial_result(&HomePartialResult::Component(board.clone()));
 		layout.components.push(board);
 	}
 	Ok(layout)

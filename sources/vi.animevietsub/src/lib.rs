@@ -84,8 +84,9 @@ use alloc::{
 use komorei::{
 	Anime, AnimePageResult, ButtonSetting, DeepLinkHandler, DeepLinkResult, DynamicFilters,
 	DynamicListings, DynamicSettings, Episode, Filter, FilterValue, Home, Listing, ListingKind,
-	ListingProvider, MigrationHandler, NotificationHandler, Result, SegmentDataInterceptor,
-	SegmentUrlInterceptor, Source, StreamData, StreamInfo, StreamType, TextSetting,
+	ListingProvider, MigrationHandler, NotificationHandler, RecommendationsHandler, Result,
+	SegmentDataInterceptor, SegmentUrlInterceptor, Source, StreamData, StreamInfo, StreamType,
+	TextSetting,
 	imports::defaults::{DefaultValue, defaults_get, defaults_set},
 	prelude::*,
 };
@@ -397,6 +398,42 @@ impl SegmentDataInterceptor for AnimeVietsubSource {
 impl NotificationHandler for AnimeVietsubSource {
 	fn handle_notification(&self, notification: String) {
 		defaults_set(NOTIFICATION_BASE_URL, DefaultValue::String(notification));
+	}
+}
+
+// ── recommendations ────────────────────────────────────────────────────────
+
+/// The detail page carries its own "Gợi ý cùng người xem" rail, and the detail
+/// pass already parsed it — the cards are serialised into
+/// [`parsers::EXTRA_RECOMMENDATIONS`] on the way out.
+///
+/// The app re-queries `get_recommended_anime` every time a different anime is
+/// opened, so serving the stash is what turns a second fetch of the same page
+/// into nothing at all. An anime that was never upgraded from a Lite card (or one
+/// whose page had no rail) falls back to a request, which is also the only way
+/// this stays correct if the site ever moves the rail off the detail page.
+impl RecommendationsHandler for AnimeVietsubSource {
+	fn get_recommended_anime(&self, anime: Anime) -> Result<AnimePageResult> {
+		let stashed = parsers::recommendations_from_extra(&anime);
+		if !stashed.is_empty() {
+			return Ok(AnimePageResult {
+				entries: stashed,
+				has_next_page: false,
+			});
+		}
+		let base = self.base();
+		let key = anime.key.clone();
+		let doc = net::fetch_html(&format!("{base}/phim/{key}/"))?;
+		// The site's own rail can include the anime being viewed, which would
+		// make the section open on itself.
+		let entries: Vec<Anime> = parsers::parse_recommendations(&doc)
+			.into_iter()
+			.filter(|rec| rec.key != key)
+			.collect();
+		Ok(AnimePageResult {
+			entries,
+			has_next_page: false,
+		})
 	}
 }
 
