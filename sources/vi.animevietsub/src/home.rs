@@ -1,8 +1,11 @@
 //! The home layout, mirroring the site's own six rails plus a launcher strip.
 //!
-//! Each rail's selector was confirmed against the live front page; the counts in
-//! the comments are what the site returned when this source was written, and are
-//! here to make a structural change to the markup obvious.
+//! Only the rails the site **server-renders** are used. The front page also has
+//! a wide carousel (`.MovieListSldCn`) and a weekly top-ten (`#showTopPhim`),
+//! and both look perfect in a browser — but their markup is injected by the
+//! site's own scripts, so a plain `fetch_html` receives zero nodes for them.
+//! The weekly board is replaced by the site's `voted` ranking (below), which is a
+//! real page and does render server-side.
 //!
 //! The layout deliberately mixes component kinds — a filter launcher, the wide
 //! carousel, poster rails, a numbered ranking and a page list — because six
@@ -20,7 +23,7 @@ use alloc::{
 
 use komorei::{
 	Anime, FilterItem, FilterValue, HomeComponent, HomeComponentValue, HomeLayout, Link, LinkValue,
-	Listing, ListingKind, Result, imports::html::Document,
+	Listing, ListingKind, Result, imports::html::Document, prelude::println,
 };
 
 use crate::{
@@ -36,66 +39,44 @@ struct Rail {
 	selector: &'static str,
 	/// The catalogue page this rail previews, for its "see all" link.
 	listing: &'static str,
-	/// How the rail is presented.
-	kind: Kind,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
-	/// A horizontal poster rail.
-	Scroller,
-	/// The site's wide banner carousel.
-	Banner,
-	/// A numbered list — the site renders real rank badges in this rail.
-	Ranking,
+/// The selectors the home asks the site for, in order.
+///
+/// Derived from [`RAILS`] rather than restated, so a rail cannot be added without
+/// showing up here. Exists for the test that asserts every one of them is a
+/// **server-rendered** section: a selector for markup the site injects with its
+/// own scripts parses fine against a browser-captured fixture and comes back
+/// empty over plain HTTP, which is a gap that only shows up on a device.
+#[cfg(test)]
+pub fn rail_selectors() -> Vec<&'static str> {
+	RAILS.iter().map(|rail| rail.selector).collect()
 }
 
-const RAILS: [Rail; 6] = [
-	Rail {
-		title: "AnimeVietSub chọn",
-		subtitle: None,
-		selector: ".MovieListSldCn .TPostMv", // 10 wide cards
-		listing: "",
-		kind: Kind::Banner,
-	},
+const RAILS: [Rail; 4] = [
 	Rail {
 		title: "Nổi bật",
 		subtitle: None,
 		selector: ".MovieListTopCn .TPostMv", // 16 cards
 		listing: "anime-moi/",
-		kind: Kind::Scroller,
 	},
 	Rail {
 		title: "Mới cập nhật",
 		subtitle: None,
 		selector: "#single-home .TPostMv", // 10 cards
 		listing: "anime-moi/",
-		kind: Kind::Scroller,
 	},
 	Rail {
 		title: "Đề cửa",
 		subtitle: None,
 		selector: "#hot-home .TPostMv", // 10 cards
 		listing: "",
-		kind: Kind::Scroller,
 	},
 	Rail {
 		title: "Tiền chiếu",
 		subtitle: Some("Sắp chiếu"),
 		selector: "#new-home .TPostMv", // 10 cards
 		listing: "anime-sap-chieu/",
-		kind: Kind::Scroller,
-	},
-	Rail {
-		title: "Top phim tuần",
-		subtitle: None,
-		// Not a `.TPostMv` block: a `ul.MovieList` of `li > .TPost.A` rows, each
-		// carrying a `.Top` rank badge. A `.TPostMv` selector matches nothing.
-		selector: "#showTopPhim .TPost",
-		// The site has no `/bang-xep-hang/week.html` — its nav carries
-		// day/voted/month/season/year — so this rail has no "see all" target.
-		listing: "",
-		kind: Kind::Ranking,
 	},
 ];
 
@@ -126,28 +107,24 @@ pub fn from_document(doc: &Document) -> HomeLayout {
 	components.push(launcher_strip());
 
 	for rail in RAILS {
+		let found = doc.select(rail.selector).map(|l| l.size()).unwrap_or(0);
 		let entries: Vec<Anime> = parsers::parse_cards(doc, rail.selector);
+		// `fetch_html` gets the server's markup, not the DOM after its scripts
+		// have run, so a rail the site fills in client-side simply is not here.
+		// Report which, rather than leaving a silent gap.
+		println!(
+			"[avs] home rail {:?} `{}` -> {found} node(s), {} card(s)",
+			rail.title,
+			rail.selector,
+			entries.len()
+		);
 		if entries.is_empty() {
 			continue;
 		}
 		let listing = (!rail.listing.is_empty()).then(|| listing(rail.listing));
-		let value = match rail.kind {
-			Kind::Banner => HomeComponentValue::BigScroller {
-				entries,
-				auto_scroll_interval: Some(5.0),
-			},
-			Kind::Scroller => HomeComponentValue::Scroller {
-				entries: entries.into_iter().map(Link::from).collect(),
-				listing,
-			},
-			// The site prints `#1`, `#2`, … in this rail's badges, so the list
-			// is presented as a ranking rather than another poster row.
-			Kind::Ranking => HomeComponentValue::AnimeList {
-				ranking: true,
-				page_size: Some(10),
-				entries: entries.into_iter().map(Link::from).collect(),
-				listing,
-			},
+		let value = HomeComponentValue::Scroller {
+			entries: entries.into_iter().map(Link::from).collect(),
+			listing,
 		};
 		components.push(HomeComponent {
 			title: Some(rail.title.into()),

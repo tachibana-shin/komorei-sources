@@ -21,6 +21,13 @@ use crate::{
 };
 
 /// The front page, trimmed of scripts and styles.
+///
+/// Captured from a *rendered* DOM, so it is a superset of what `fetch_html`
+/// receives. It is the right fixture for "does this selector work", but it must
+/// not be used to claim a rail is reachable over plain HTTP — the carousel
+/// (`.MovieListSldCn`) and the weekly top-ten (`#showTopPhim`) are injected by
+/// the site's own scripts and come back empty from the server. `tests_home`
+/// below pins that distinction.
 const HOME: &str = include_str!("../tests/fixtures/page_home.html");
 /// A title's detail page.
 const DETAIL: &str = include_str!("../tests/fixtures/page_detail.html");
@@ -603,37 +610,64 @@ fn episode_numbers_keep_their_halves() {
 
 // ── home layout ────────────────────────────────────────────────────────────
 
-#[komorei_test]
-fn home_mixes_component_kinds() {
+fn home_layout_shape() {
 	use komorei::HomeComponentValue;
 	let layout = crate::home::from_document(&doc(HOME));
-	assert!(
-		layout.components.len() >= 5,
+	// Launcher strip + 4 poster rails + catalogue strip.
+	assert_eq!(
+		layout.components.len(),
+		6,
 		"got {}",
 		layout.components.len()
 	);
 
-	// A launcher strip first, then the rails, then the catalogue links.
-	let kinds: Vec<&str> = layout
-		.components
-		.iter()
-		.map(|c| match c.value {
-			HomeComponentValue::Filters(_) => "Filters",
-			HomeComponentValue::BigScroller { .. } => "BigScroller",
-			HomeComponentValue::Scroller { .. } => "Scroller",
-			HomeComponentValue::AnimeList { .. } => "AnimeList",
-			HomeComponentValue::Links(_) => "Links",
-			_ => "other",
-		})
-		.collect();
-	assert_eq!(kinds[0], "Filters", "must open with the launcher strip");
+	// A launcher strip first, the rails in the middle, the catalogue strip last.
+	assert!(matches!(
+		layout.components[0].value,
+		HomeComponentValue::Filters(_)
+	));
 	assert!(
-		kinds.contains(&"BigScroller"),
-		"the wide carousel must be used"
+		layout.components[1..5]
+			.iter()
+			.all(|c| matches!(c.value, HomeComponentValue::Scroller { .. })),
+		"the middle four must all be poster rails"
 	);
-	assert!(kinds.contains(&"Scroller"), "poster rails must be used");
-	assert!(kinds.contains(&"AnimeList"), "a ranking must be used");
-	assert!(kinds.contains(&"Links"), "the catalogue strip must be used");
+	assert!(matches!(
+		layout.components[5].value,
+		HomeComponentValue::Links(_)
+	));
+}
+
+/// The rails the home asks for must all be ones the site **server-renders**.
+///
+/// This is the assertion that catches the wide carousel (`.MovieListSldCn`) and
+/// the weekly top-ten (`#showTopPhim`): both parse fine against a
+/// browser-captured fixture and both come back **empty** from the server, because
+/// the site injects them with its own scripts. A rail added to the home that is
+/// only built client-side silently renders nothing on a device.
+fn home_rails_are_server_rendered() {
+	// The site fills these two sections with its own scripts. They parse fine
+	// against a browser-captured fixture — which is why they look safe — and
+	// come back **empty** from `fetch_html`, so on a device they render nothing.
+	const CLIENT_SIDE_ONLY: [(&str, &str); 2] = [
+		("the wide carousel", ".MovieListSldCn .TPostMv"),
+		("the weekly top-ten", "#showTopPhim .TPost"),
+	];
+	for (title, selector) in CLIENT_SIDE_ONLY {
+		assert!(
+			!crate::home::rail_selectors().contains(&selector),
+			"`{selector}` ({title}) is client-side only and must not be a home rail"
+		);
+	}
+	// Every rail the home does use must match something, so a typo cannot leave a
+	// silently empty rail behind.
+	let doc = doc(HOME);
+	for selector in crate::home::rail_selectors() {
+		assert!(
+			doc.select(selector).map(|l| l.size()).unwrap_or(0) > 0,
+			"rail `{selector}` matches nothing"
+		);
+	}
 }
 
 #[komorei_test]
