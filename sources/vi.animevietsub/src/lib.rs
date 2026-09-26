@@ -71,6 +71,8 @@ mod parsers;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_net;
+#[cfg(test)]
 mod tests_parse;
 
 use alloc::{
@@ -163,6 +165,23 @@ impl Source for AnimeVietsubSource {
 		if needs_details {
 			let doc = net::fetch_html(&format!("{base}/phim/{key}/"))?;
 			let detail = parsers::parse_detail(&doc);
+			println!(
+				"[avs] detail title={:?} orig={:?} rating={:?} rating_count={:?} \
+				 views={} episode_count={} current={:?} quality={:?} \
+				 access_time={:?} genres={} studio={:?} seasons={}",
+				detail.title,
+				detail.original_title,
+				detail.rating,
+				detail.rating_count,
+				detail.views,
+				detail.episode_count,
+				detail.current_episode,
+				detail.quality_tag,
+				doc.select(".AAIco-access_time").map(|l| l.text()),
+				detail.genres.len(),
+				detail.studio.as_ref().map(|s| s.name.clone()),
+				detail.seasons.len(),
+			);
 			// A page that failed to parse leaves an empty title; keep the Lite
 			// card's own rather than overwriting good data with nothing.
 			if !detail.title.is_empty() {
@@ -174,8 +193,31 @@ impl Source for AnimeVietsubSource {
 		}
 
 		if needs_chapters {
-			let doc = net::fetch_html(&format!("{base}/phim/{key}/xem-phim.html"))?;
-			anime.episodes = Some(parsers::parse_episodes(&doc));
+			let url = format!("{base}/phim/{key}/xem-phim.html");
+			let doc = net::fetch_html(&url)?;
+			let episodes = parsers::parse_episodes(&doc);
+			// An empty list with no explanation is the one failure a user cannot
+			// act on, so report what the page actually contained.
+			println!(
+				"[avs] {url} -> {} episodes (list-server={}, li.episode={}, data-hash={}, challenge={})",
+				episodes.len(),
+				doc.select(parsers::LIST_SERVER)
+					.map(|l| l.size())
+					.unwrap_or(0),
+				doc.select(parsers::EPISODE_ITEMS)
+					.map(|l| l.size())
+					.unwrap_or(0),
+				doc.select("[data-hash]").map(|l| l.size()).unwrap_or(0),
+				parsers::looks_like_challenge(&doc),
+			);
+			// The detail page's `.AAIco-access_time` is not a reliable count: a
+			// preview or unreleased title reads `PV/??`, which parses to nothing
+			// and left the header claiming "0 episodes" beside a full list. The
+			// list itself is the authority.
+			if !episodes.is_empty() {
+				anime.episode_count = episodes.len() as i32;
+			}
+			anime.episodes = Some(episodes);
 		}
 
 		Ok(anime)

@@ -20,6 +20,7 @@ use alloc::{
 use komorei::{
 	Result,
 	imports::{base64, html::Document, net::Request},
+	prelude::println,
 };
 
 use crate::{
@@ -200,12 +201,33 @@ fn fetch_playlist(player_url: &str, vars: &PlayerVars) -> Result<String> {
 		.get_string()
 		.map_err(|_| komorei::error!("Không đọc được nội dung playlist"))?;
 
-	Ok(match env {
-		Some(env) => decrypt_playlist_body(&body, &env, vars.harden)?,
+	match env {
+		Some(env) => {
+			let out = decrypt_playlist_body(&body, &env, vars.harden)?;
+			println!(
+				"[avs] playlist {} bytes, envelope stag={} etag={} id={} custom={} -> {} bytes; \
+				 decoy /chunks/ left={}, real /hls/ found={}",
+				body.len(),
+				env.stag,
+				env.etag,
+				env.id,
+				env.custom,
+				out.len(),
+				out.matches("/chunks/").count(),
+				out.matches("/hls/").count(),
+			);
+			Ok(out)
+		}
 		// Without the envelope there is no key, so the body can only be usable
 		// if the site served a plain manifest.
-		None => body,
-	})
+		None => {
+			println!(
+				"[avs] playlist has NO X-Envelope header, {} bytes",
+				body.len()
+			);
+			Ok(body)
+		}
+	}
 }
 
 /// Unwrap the decoy playlist body into the real manifest.
@@ -215,7 +237,11 @@ fn fetch_playlist(player_url: &str, vars: &PlayerVars) -> Result<String> {
 /// concatenation of those blobs is the encrypted real playlist. `_c` is the
 /// segment count, not a cipher flag — but its presence is what distinguishes
 /// this layout from a plain manifest.
-fn decrypt_playlist_body(body: &str, env: &crypto::Envelope, harden: bool) -> Result<String> {
+pub(crate) fn decrypt_playlist_body(
+	body: &str,
+	env: &crypto::Envelope,
+	harden: bool,
+) -> Result<String> {
 	let lines: Vec<&str> = body.split('\n').collect();
 
 	let encrypted = lines
@@ -223,10 +249,15 @@ fn decrypt_playlist_body(body: &str, env: &crypto::Envelope, harden: bool) -> Re
 		.any(|line| !line.trim().is_empty() && !line.starts_with('#') && has_c_param(line));
 	if !encrypted {
 		// Already a plain manifest — nothing to unwrap.
+		println!("[avs] body is not encrypted (no _c), passing through");
 		return Ok(body.to_string());
 	}
 	// The envelope's `cn`/`sk` are required; without them the body stays as-is.
 	if env.stag.is_empty() || env.etag.is_empty() {
+		println!(
+			"[avs] body has _c but the envelope is empty (stag={:?} etag={:?}), passing through",
+			env.stag, env.etag
+		);
 		return Ok(body.to_string());
 	}
 
@@ -250,6 +281,7 @@ fn decrypt_playlist_body(body: &str, env: &crypto::Envelope, harden: bool) -> Re
 		}
 	}
 	if payload.is_empty() {
+		println!("[avs] no _t parameters found, passing through");
 		return Ok(body.to_string());
 	}
 
@@ -299,23 +331,27 @@ fn decrypt_placeholders(playlist: &str, session_key: &str) -> String {
 }
 
 /// Whether a segment line carries the `_c` parameter.
-fn has_c_param(line: &str) -> bool {
+pub(crate) fn has_c_param(line: &str) -> bool {
 	query_value(line, "_c").is_some_and(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// The `_t` payload of a decoy segment line.
-fn t_param(line: &str) -> Option<&str> {
+pub(crate) fn t_param(line: &str) -> Option<&str> {
 	query_value(line, "_t").filter(|v| !v.is_empty())
 }
 
 /// The value of `key` in a url's query string.
-fn query_value<'a>(url: &'a str, key: &str) -> Option<&'a str> {
+///
+/// The predicate has to live *inside* `find_map`: a decoy segment line carries
+/// `si`, `seq`, `token`, `_t` and `_c` in that order, so a
+/// `find_map(split_once)` followed by a `filter` would stop at `si` and report
+/// every later parameter as missing.
+pub(crate) fn query_value<'a>(url: &'a str, key: &str) -> Option<&'a str> {
 	let query = url.split_once('?')?.1;
-	query
-		.split('&')
-		.find_map(|pair| pair.split_once('='))
-		.filter(|(name, _)| *name == key)
-		.map(|(_, value)| value)
+	query.split('&').find_map(|pair| {
+		let (name, value) = pair.split_once('=')?;
+		(name == key).then_some(value)
+	})
 }
 
 /// The host of an absolute url.

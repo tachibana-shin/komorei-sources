@@ -31,7 +31,7 @@ const SEGMENT_CAMOUFLAGE: &[u8] = include_bytes!("../tests/fixtures/segment_camo
 /// The envelope of a real playlist response, which every decryption input is
 /// derived from.
 fn real_envelope() -> Envelope {
-	parse_envelope(trim(ENVELOPE)).expect("envelope hợp lệ")
+	parse_envelope(trim(ENVELOPE)).expect("envelope parses")
 }
 
 fn trim(s: &str) -> &str {
@@ -68,7 +68,7 @@ fn envelope_rejects_a_truncated_container() {
 
 #[komorei_test]
 fn player_page_yields_id_and_reassembled_token() {
-	let vars = parse_player_vars(PLAYER_VARS).expect("trang player hợp lệ");
+	let vars = parse_player_vars(PLAYER_VARS).expect("player page parses");
 	assert_eq!(
 		vars.id,
 		"12446c5dfb4375b4aa0099777b244103771fdb71c46e719ccf2096a45927aed5"
@@ -77,8 +77,8 @@ fn player_page_yields_id_and_reassembled_token() {
 	// naive scraper capture half of it; the two halves must rejoin.
 	assert_eq!(vars.avs_sk.len(), 356);
 	assert_eq!(vars.avs_sk, trim(TOKEN));
-	assert!(vars.harden, "_avsCryptoHarden phải bật");
-	assert!(vars.shadow, "_avsCryptoHardenShadow phải bật");
+	assert!(vars.harden, "_avsCryptoHarden must be set");
+	assert!(vars.shadow, "_avsCryptoHardenShadow must be set");
 }
 
 #[komorei_test]
@@ -155,15 +155,15 @@ fn playlist_decrypts_to_the_real_manifest() {
 	let first = plain.lines().next().unwrap_or_default();
 	assert!(
 		first.starts_with("#EXT-X-AVS-SK:"),
-		"dòng đầu phải là #EXT-X-AVS-SK, nhận được {first:?}"
+		"first line must be #EXT-X-AVS-SK, got {first:?}"
 	);
 	assert!(
 		plain.contains("/hls/") && plain.contains("?e=") && plain.contains("&i="),
-		"phải chứa placeholder /hls/{{24hex}}.ts?e=…&i=…"
+		"must contain /hls/{{24hex}}.ts?e=…&i=… placeholders"
 	);
 	assert!(
 		!plain.contains("/chunks/"),
-		"không được còn URL giả /chunks/"
+		"decoy /chunks/ urls must be gone"
 	);
 }
 
@@ -196,12 +196,12 @@ fn playlist_matches_the_captured_head() {
 	let actual: Vec<&str> = plain.lines().collect();
 	assert!(
 		actual.len() >= expected.len(),
-		"thiếu dòng: {} < {}",
+		"missing lines: {} < {}",
 		actual.len(),
 		expected.len()
 	);
 	for (i, want) in expected.iter().enumerate() {
-		assert_eq!(actual[i], *want, "lệch ở dòng {i}");
+		assert_eq!(actual[i], *want, "mismatch on line {i}");
 	}
 }
 
@@ -219,7 +219,7 @@ fn wrong_key_fails_the_gcm_tag() {
 		&env.id,
 		true,
 	);
-	assert!(broken.is_err(), "thẻ GCM sai phải bị từ chối");
+	assert!(broken.is_err(), "a wrong GCM tag must be rejected");
 }
 
 // ── segment url cipher ─────────────────────────────────────────────────────
@@ -269,7 +269,7 @@ fn segment_header_is_a_png_disguise() {
 fn trimming_the_header_exposes_mpeg_ts() {
 	let trimmed = trim_segment_header(SEGMENT_CAMOUFLAGE);
 	assert_eq!(trimmed.len(), SEGMENT_CAMOUFLAGE.len() - 127);
-	assert_eq!(trimmed[0], 0x47, "byte đầu phải là sync byte MPEG-TS");
+	assert_eq!(trimmed[0], 0x47, "first byte must be the MPEG-TS sync byte");
 	// Every 188-byte transport packet keeps its sync byte.
 	for offset in (0..trimmed.len()).step_by(188) {
 		assert_eq!(trimmed[offset], 0x47, "mất sync ở packet {offset}");
@@ -291,14 +291,17 @@ fn prng_seeds_from_fnv1a_and_never_reaches_zero() {
 	let mut prng = Fnv1aPrng::new("");
 	let first = prng.next();
 	assert_ne!(first, 0);
-	assert_ne!(first, 0x811C_9DC5, "một vòng xorshift phải khác hạt giống");
-	assert_ne!(prng.next(), first, "hai lần gọi liên tiếp phải khác nhau");
+	assert_ne!(
+		first, 0x811C_9DC5,
+		"one xorshift round must differ from the seed"
+	);
+	assert_ne!(prng.next(), first, "two consecutive calls must differ");
 
 	// Any non-zero state stays non-zero: xorshift32 is a bijection.
 	for seed in ["", "etag", "1790404573", "JubavkOQI6AfgNqsk3NdLtvOKyzDLDI"] {
 		let mut p = Fnv1aPrng::new(seed);
 		for _ in 0..64 {
-			assert_ne!(p.next(), 0, "seed {seed:?} sinh ra 0");
+			assert_ne!(p.next(), 0, "seed {seed:?} produced 0");
 		}
 	}
 }
@@ -311,11 +314,11 @@ fn descramble_output_stays_base64url() {
 	let sample = "AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNNOOOO";
 	let out = descramble_content(sample, etag);
 	assert_eq!(out.len(), sample.len());
-	assert!(out != sample, "phải thực sự biến đổi chuỗi");
+	assert!(out != sample, "must actually shuffle the string");
 	assert!(
 		out.bytes()
 			.all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
-		"kết quả phải vẫn là base64url: {out:?}"
+		"result must still be base64url: {out:?}"
 	);
 }
 
@@ -335,7 +338,7 @@ fn xor_permute_is_deterministic_and_key_dependent() {
 	let data: Vec<u8> = (0u8..=255).collect();
 	let a = xor_permute(&data, "etag", "1790404573");
 	assert_eq!(a, xor_permute(&data, "etag", "1790404573"));
-	assert_ne!(a, data, "phải thực sự biến đổi dữ liệu");
+	assert_ne!(a, data, "must actually transform the data");
 	assert_ne!(a, xor_permute(&data, "other", "1790404573"));
 	assert_ne!(a, xor_permute(&data, "etag", "9999999999"));
 	assert_eq!(a.len(), data.len());

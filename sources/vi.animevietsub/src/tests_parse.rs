@@ -48,20 +48,20 @@ fn poster_card_yields_key_title_cover_and_rating() {
 	let found = cards(HOME, CARD);
 	assert!(
 		found.len() >= 10,
-		"trang chủ phải có nhiều card, có {}",
+		"the front page must have cards, has {}",
 		found.len()
 	);
 
 	let one = found
 		.iter()
 		.find(|a| a.title.contains("Thiếu Chủ"))
-		.expect("phải thấy card 'Thiếu Chủ Giỏi Chạy Trốn 2'");
+		.expect("must find the target card");
 
 	// Keys are the `/phim/{slug}-a{id}/` segment, which is also the detail url.
 	assert_eq!(one.key, "nige-jouzu-no-wakagimi-2nd-season-a6015");
 	assert!(
 		one.cover.starts_with("https://"),
-		"cover phải là url tuyệt đối: {}",
+		"cover must be absolute: {}",
 		one.cover
 	);
 	assert!(one.cover.ends_with(".jpg") || one.cover.ends_with(".png"));
@@ -78,7 +78,7 @@ fn poster_card_reads_the_episode_badge() {
 	let one = found
 		.iter()
 		.find(|a| a.key == "nige-jouzu-no-wakagimi-2nd-season-a6015")
-		.expect("phải có card cần tìm");
+		.expect("card under test not found");
 	// `<span class="mli-eps">TẬP<i>11</i></span>`
 	assert_eq!(one.current_episode.as_deref(), Some("Tập 11"));
 }
@@ -91,7 +91,7 @@ fn year_comes_from_the_date_range_not_the_year_class() {
 	let one = found
 		.iter()
 		.find(|a| a.key == "nige-jouzu-no-wakagimi-2nd-season-a6015")
-		.expect("phải có card cần tìm");
+		.expect("card under test not found");
 	let year = one.release_year.as_ref().map(|y| y.name.clone());
 	assert_eq!(year.as_deref(), Some("2026"));
 }
@@ -102,7 +102,7 @@ fn view_count_comes_from_the_year_class() {
 	let one = found
 		.iter()
 		.find(|a| a.key == "nige-jouzu-no-wakagimi-2nd-season-a6015")
-		.expect("phải có card cần tìm");
+		.expect("card under test not found");
 	// `Lượt xem: 810,440` -> 810440, separators stripped.
 	assert_eq!(one.views, 810_440);
 }
@@ -112,11 +112,11 @@ fn carousel_card_reads_its_info_strip() {
 	// The wide cards carry `.Info` spans instead of `.mli-eps`:
 	// `.AAIco-star` is the score and `.AAIco-access_time` the `11/12` progress.
 	let found = cards(HOME, ".MovieListSldCn .TPostMv");
-	assert!(!found.is_empty(), "carousel phải có card");
+	assert!(!found.is_empty(), "the carousel must have cards");
 	let one = found
 		.iter()
 		.find(|a| a.key == "nige-jouzu-no-wakagimi-2nd-season-a6015")
-		.expect("phải thấy card carousel");
+		.expect("carousel card not found");
 	assert_eq!(one.rating, Some(9.7));
 	assert_eq!(one.current_episode.as_deref(), Some("Tập 11"));
 	assert_eq!(one.quality_tag.as_deref(), Some("FHD"));
@@ -124,7 +124,7 @@ fn carousel_card_reads_its_info_strip() {
 		one.studio.as_ref().map(|s| s.name.as_str()),
 		Some("CloverWorks")
 	);
-	assert!(!one.genres.is_empty(), "phải có thể loại");
+	assert!(!one.genres.is_empty(), "must have genres");
 }
 
 #[komorei_test]
@@ -140,10 +140,10 @@ fn every_home_rail_produces_cards() {
 		"#showTopPhim .TPost",
 	] {
 		let found = cards(HOME, selector);
-		assert!(!found.is_empty(), "rail `{selector}` trả về 0 card");
+		assert!(!found.is_empty(), "rail `{selector}` returned 0 cards");
 		for anime in &found {
-			assert!(!anime.key.is_empty(), "card trong `{selector}` thiếu key");
-			assert!(!anime.title.is_empty(), "card `{}` thiếu title", anime.key);
+			assert!(!anime.key.is_empty(), "a card in `{selector}` has no key");
+			assert!(!anime.title.is_empty(), "card `{}` has no title", anime.key);
 		}
 	}
 }
@@ -153,11 +153,11 @@ fn home_layout_is_built_from_the_front_page() {
 	let layout = home::from_document(&doc(HOME));
 	assert!(
 		layout.components.len() >= 5,
-		"phải có ít nhất 5 rail, có {}",
+		"expected at least 5 rails, got {}",
 		layout.components.len()
 	);
 	for component in &layout.components {
-		assert!(component.title.is_some(), "mỗi component cần tiêu đề");
+		assert!(component.title.is_some(), "every component needs a title");
 	}
 }
 
@@ -166,18 +166,18 @@ fn home_layout_is_built_from_the_front_page() {
 #[komorei_test]
 fn ranking_rows_parse_with_their_episode_state() {
 	let found = parsers::parse_ranking(&doc(RANKING));
-	assert!(!found.is_empty(), "bảng xếp hạng phải có hàng");
+	assert!(!found.is_empty(), "the ranking board must have rows");
 	let one = &found[0];
 	assert!(!one.key.is_empty());
 	assert!(!one.title.is_empty());
 	// `.score` is the episode state, not a rating: `Tập NN` or `Full`.
 	assert!(
 		one.current_episode.is_some() || one.status == AnimeStatus::Completed,
-		"phải đọc được trạng thái tập, có current={:?} status={:?}",
+		"episode state must be readable, current={:?} status={:?}",
 		one.current_episode,
 		one.status
 	);
-	assert_eq!(one.rating, None, "`Tập 24` không phải là điểm");
+	assert_eq!(one.rating, None, "`Tập 24` is not a rating");
 }
 
 #[komorei_test]
@@ -192,22 +192,22 @@ fn ranking_selector_is_the_group_class() {
 #[komorei_test]
 fn episodes_carry_id_and_hash_in_the_key() {
 	let found = parsers::parse_episodes(&doc(EPISODES_PAGE));
-	assert_eq!(found.len(), 11, "trang này có 11 tập");
+	assert_eq!(found.len(), 11, "this page has 11 episodes");
 
 	let first = &found[0];
 	assert_eq!(first.episode_number, "1");
 	// The key has to round-trip into the `data-id` + `data-hash` pair that
 	// `/ajax/player` insists on.
-	let (id, hash) = split_episode_key(&first.key).expect("key phải tách được");
+	let (id, hash) = split_episode_key(&first.key).expect("key must split");
 	assert_eq!(id, "114607");
 	assert!(
 		hash.len() > 40,
-		"hash phải là chữ ký dài, có {}",
+		"hash must be a long signature, len {}",
 		hash.len()
 	);
 	assert!(
 		hash.starts_with("5qC6TJh"),
-		"hash phải khớp data-hash: {hash}"
+		"hash must match data-hash: {hash}"
 	);
 }
 
@@ -227,16 +227,19 @@ fn episode_hashes_keep_their_dashes() {
 	let found = parsers::parse_episodes(&doc(EPISODES_PAGE));
 	for episode in &found {
 		let (_, hash) = split_episode_key(&episode.key)
-			.unwrap_or_else(|| panic!("không tách được key {}", episode.key));
+			.unwrap_or_else(|| panic!("cannot split key {}", episode.key));
 		assert!(
 			hash.chars()
 				.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
-			"hash lạ: {hash}"
+			"unexpected hash: {hash}"
 		);
 		// Not every hash carries a `-`; what matters is that the split did not
 		// eat one when it did. Check a known multi-part hash explicitly.
 		if episode.episode_number == "1" {
-			assert!(hash.contains('-'), "tập 1 có hash nhiều phần: {hash}");
+			assert!(
+				hash.contains('-'),
+				"episode 1 has a multi-part hash: {hash}"
+			);
 		}
 	}
 }
@@ -255,25 +258,83 @@ fn split_episode_key_rejects_malformed_keys() {
 fn detail_page_yields_title_synopsis_and_artwork() {
 	let detail = parsers::parse_detail(&doc(DETAIL));
 	assert_eq!(detail.title, "Thiếu Chủ Giỏi Chạy Trốn 2");
-	// The site's synopsis reads `[Tập 11] Thiếu Chủ Giỏi Chạy Trốn 2: …`, so the
-	// episode marker goes and what follows it is the actual blurb.
+	// The romaji title, straight from `h2.SubTitle`.
+	assert_eq!(
+		detail.original_title,
+		"Nige Jouzu no Wakagimi 2nd Season, The Elusive Samurai Season 2, Nigewaka"
+	);
+	// The synopsis is the `.Description` block itself, not a meta tag.
 	let synopsis = detail.description.clone().unwrap_or_default();
 	assert!(
-		!synopsis.starts_with('['),
-		"tiền tố [Tập …] phải được bỏ: {synopsis}"
-	);
-	assert!(
-		synopsis.starts_with("Thiếu Chủ Giỏi Chạy Trốn 2:"),
-		"phần còn lại phải là nội dung mô tả: {synopsis}"
-	);
-	assert!(
-		synopsis.contains("Sau thời gian dài"),
-		"mất nội dung: {synopsis}"
+		synopsis.starts_with("Sau thời gian dài"),
+		"phải đọc `.Description`: {synopsis}"
 	);
 	assert!(detail.cover.contains("cdn.animevietsub.li"));
 	assert!(detail.banner.is_some(), "phải có banner");
 	assert_eq!(detail.rating, Some(9.7));
 	assert_eq!(detail.quality_tag.as_deref(), Some("FHD"));
+}
+
+#[komorei_test]
+fn detail_reads_the_labelled_info_rows() {
+	let detail = parsers::parse_detail(&doc(DETAIL));
+	// `#average_score` is the score, `.num-rating` how many rated it.
+	assert_eq!(detail.rating_count, Some(83));
+	// `.AAIco-remove_red_eye` is `809,991 Lượt Xem`.
+	assert_eq!(detail.views, 809_991);
+	// The rows are found by their `<strong>` label, not by position.
+	assert_eq!(
+		detail.studio.as_ref().map(|s| s.name.as_str()),
+		Some("CloverWorks")
+	);
+	assert!(
+		detail.countries.iter().any(|c| c.name == "Nhật Bản"),
+		"the country row must be read, got {:?}",
+		detail.countries
+	);
+	assert!(
+		detail
+			.season_of
+			.as_ref()
+			.is_some_and(|s| s.name.contains("Mùa Hạ")),
+		"phải đọc được Season"
+	);
+	// The year link is `/danh-sach/all/all/all/2026`, so it also carries a
+	// working `year` filter.
+	let year = detail
+		.release_year
+		.as_ref()
+		.expect("a release year is required");
+	assert_eq!(year.name, "2026");
+	assert!(
+		year.filters.iter().any(|f| matches!(
+			f,
+			FilterValue::Select { id, value } if id == "year" && value == "2026"
+		)),
+		"năm phải mang filter year=2026"
+	);
+}
+
+#[komorei_test]
+fn detail_reads_genres_and_seasons() {
+	let detail = parsers::parse_detail(&doc(DETAIL));
+	// Genres come from the `/the-loai/` entries of the breadcrumb.
+	assert!(detail.genres.iter().any(|g| g.name == "Shounen"));
+	assert!(detail.genres.iter().any(|g| g.name == "Supernatural"));
+	// The breadcrumb also names the section and the title; neither is a genre.
+	assert!(
+		!detail
+			.genres
+			.iter()
+			.any(|g| g.name == "Thiếu Chủ Giỏi Chạy Trốn 2")
+	);
+	// `.season_item > a` links the sibling seasons.
+	assert!(
+		detail.seasons.iter().any(|s| s.title == "Phần 1"),
+		"the seasons must be read, got {:?}",
+		detail.seasons
+	);
+	assert!(detail.seasons.iter().all(|s| !s.anime_id.is_empty()));
 }
 
 // ── search & pagination ────────────────────────────────────────────────────
@@ -285,7 +346,7 @@ fn search_results_parse_as_cards() {
 	// The keyword really filtered: every card mentions it.
 	assert!(
 		found.iter().any(|a| a.title.contains("One Piece")),
-		"phải có kết quả One Piece"
+		"must contain a One Piece result"
 	);
 }
 
@@ -305,12 +366,12 @@ fn pager_reports_the_last_page() {
 fn filter_panel_is_read_from_the_site() {
 	assert!(
 		doc(CATALOG).select_first(FILTER_PANEL).is_some(),
-		"trang danh sách phải có #filter"
+		"the catalogue page must carry #filter"
 	);
 	let filters = parsers::parse_filters(&doc(CATALOG));
 	assert!(
 		filters.len() >= 7,
-		"phải đọc được các nhóm lọc, có {}",
+		"expected the filter groups, got {}",
 		filters.len()
 	);
 
@@ -320,7 +381,7 @@ fn filter_panel_is_read_from_the_site() {
 	] {
 		assert!(
 			ids.contains(&expected),
-			"thiếu nhóm `{expected}` trong {ids:?}"
+			"group `{expected}` missing from {ids:?}"
 		);
 	}
 }
@@ -331,7 +392,7 @@ fn genres_are_multi_select_and_the_rest_single() {
 	let genres = filters
 		.iter()
 		.find(|f| f.id.as_ref() == "genres")
-		.expect("phải có nhóm genres");
+		.expect("the genres group is missing");
 	// `genres[]` renders as checkboxes; the site allows an exclusion marker.
 	assert!(
 		matches!(
@@ -341,15 +402,15 @@ fn genres_are_multi_select_and_the_rest_single() {
 				..
 			}
 		),
-		"genres phải multi-select + cho phép loại trừ"
+		"genres must be multi-select and excludable"
 	);
 	let country = filters
 		.iter()
 		.find(|f| f.id.as_ref() == "country")
-		.expect("phải có nhóm country");
+		.expect("the country group is missing");
 	assert!(
 		matches!(country.kind, komorei::FilterKind::Select { .. }),
-		"country phải single-select"
+		"country must be single-select"
 	);
 }
 
@@ -359,25 +420,27 @@ fn filter_options_carry_both_label_and_path_segment() {
 	let country = filters
 		.iter()
 		.find(|f| f.id.as_ref() == "country")
-		.expect("phải có nhóm country");
+		.expect("the country group is missing");
 	let (options, ids) = match &country.kind {
 		komorei::FilterKind::Select { options, ids, .. } => (options, ids),
-		_ => panic!("country phải là Select"),
+		_ => panic!("country must be a Select filter"),
 	};
 	// `jp` is the path segment, `Nhật Bản (5381)` the label — the trailing
 	// count is stripped so the chip reads cleanly.
-	let id_list = ids.as_ref().expect("phải có ids vì label khác giá trị");
+	let id_list = ids
+		.as_ref()
+		.expect("ids are required because labels differ from values");
 	assert!(
 		id_list.iter().any(|v| v.as_ref() == "jp"),
-		"phải có mã quốc gia jp"
+		"the jp country code must be present"
 	);
 	assert!(
 		options.iter().all(|o| !o.contains('(')),
-		"nhãn phải bỏ đuôi (số lượng): {options:?}"
+		"labels must drop the trailing count: {options:?}"
 	);
 	assert!(
 		options.iter().any(|o| o.contains("Nhật Bản")),
-		"phải có nhãn Nhật Bản"
+		"the Vietnamese label must be present"
 	);
 }
 
@@ -428,7 +491,7 @@ fn category_path_joins_genres_with_dashes() {
 	// Included genres join with `-`; an excluded one is prefixed `!`.
 	assert!(
 		parsers::build_category_path(&filters, 1).contains("/1-2-!46/"),
-		"phải nối thể loại bằng dấu gạch và đánh dấu loại trừ: {}",
+		"genres must join with dashes and mark exclusions: {}",
 		parsers::build_category_path(&filters, 1)
 	);
 }
@@ -492,7 +555,7 @@ fn deep_links_resolve_the_slug_from_any_phim_url() {
 			Ok(Some(komorei::DeepLinkResult::Anime { key })) => {
 				assert!(
 					key.starts_with("nige-jouzu") || key.starts_with("one-piece"),
-					"sai key cho {url}: {key}"
+					"wrong key for {url}: {key}"
 				);
 			}
 			other => panic!("{url} phải ra anime, nhận {other:?}"),
@@ -536,4 +599,150 @@ fn episode_numbers_keep_their_halves() {
 	assert_eq!(parsers::normalise_number("12.5"), "12.5");
 	assert_eq!(parsers::normalise_number("01"), "1");
 	assert_eq!(parsers::normalise_number("1179"), "1179");
+}
+
+// ── home layout ────────────────────────────────────────────────────────────
+
+#[komorei_test]
+fn home_mixes_component_kinds() {
+	use komorei::HomeComponentValue;
+	let layout = crate::home::from_document(&doc(HOME));
+	assert!(
+		layout.components.len() >= 5,
+		"got {}",
+		layout.components.len()
+	);
+
+	// A launcher strip first, then the rails, then the catalogue links.
+	let kinds: Vec<&str> = layout
+		.components
+		.iter()
+		.map(|c| match c.value {
+			HomeComponentValue::Filters(_) => "Filters",
+			HomeComponentValue::BigScroller { .. } => "BigScroller",
+			HomeComponentValue::Scroller { .. } => "Scroller",
+			HomeComponentValue::AnimeList { .. } => "AnimeList",
+			HomeComponentValue::Links(_) => "Links",
+			_ => "other",
+		})
+		.collect();
+	assert_eq!(kinds[0], "Filters", "must open with the launcher strip");
+	assert!(
+		kinds.contains(&"BigScroller"),
+		"the wide carousel must be used"
+	);
+	assert!(kinds.contains(&"Scroller"), "poster rails must be used");
+	assert!(kinds.contains(&"AnimeList"), "a ranking must be used");
+	assert!(kinds.contains(&"Links"), "the catalogue strip must be used");
+}
+
+#[komorei_test]
+fn every_home_component_has_entries() {
+	use komorei::HomeComponentValue;
+	// The app skips a component whose value is empty, so an empty one is dead
+	// weight: assert nothing was pushed empty.
+	for component in crate::home::from_document(&doc(HOME)).components {
+		let empty = match &component.value {
+			HomeComponentValue::Filters(items) => items.is_empty(),
+			HomeComponentValue::BigScroller { entries, .. } => entries.is_empty(),
+			HomeComponentValue::Scroller { entries, .. } => entries.is_empty(),
+			HomeComponentValue::AnimeList { entries, .. } => entries.is_empty(),
+			HomeComponentValue::Links(links) => links.is_empty(),
+			HomeComponentValue::AnimeEpisodeList { entries, .. } => entries.is_empty(),
+			HomeComponentValue::ImageScroller { links, .. } => links.is_empty(),
+		};
+		assert!(!empty, "component {:?} has no entries", component.title);
+		assert!(component.title.is_some(), "every component needs a title");
+	}
+}
+
+#[komorei_test]
+fn rails_that_can_reach_a_catalogue_carry_their_listing() {
+	use komorei::HomeComponentValue;
+	// `listing` is what renders the row's "see all"; a rail pointing at a
+	// catalogue page must carry it.
+	let layout = crate::home::from_document(&doc(HOME));
+	let rails: Vec<_> = layout
+		.components
+		.iter()
+		.filter_map(|c| match &c.value {
+			HomeComponentValue::Scroller { listing, .. } => Some(listing.is_some()),
+			_ => None,
+		})
+		.collect();
+	assert!(!rails.is_empty(), "expected poster rails");
+	assert!(
+		rails.iter().any(|has| *has),
+		"at least one rail must offer 'see all'"
+	);
+}
+
+#[komorei_test]
+fn launcher_shortcuts_use_catalogue_path_values() {
+	use komorei::HomeComponentValue;
+	let layout = crate::home::from_document(&doc(HOME));
+	let HomeComponentValue::Filters(items) = &layout.components[0].value else {
+		panic!("first component must be the launcher strip");
+	};
+	assert!(items.len() >= 8, "got {} shortcuts", items.len());
+	// Every shortcut must be a `Select` on a slot the catalogue path addresses.
+	for item in items {
+		let values = item.values.as_ref().expect("shortcut needs filter values");
+		assert_eq!(values.len(), 1);
+		match &values[0] {
+			FilterValue::Select { id, value } => {
+				assert!(
+					["type", "season", "country"].contains(&id.as_str()),
+					"unexpected slot {id}"
+				);
+				assert!(!value.is_empty(), "empty value in {}", item.title);
+			}
+			other => panic!("expected Select, got {other:?}"),
+		}
+	}
+	// The ids must be ones the site's own panel emits, or the shortcut resolves
+	// to a page that does not exist.
+	let values: Vec<String> = items
+		.iter()
+		.filter_map(|i| i.values.as_ref())
+		.filter_map(|v| match &v[0] {
+			FilterValue::Select { value, .. } => Some(value.clone()),
+			_ => None,
+		})
+		.collect();
+	for expected in [
+		"all",
+		"list-bo",
+		"list-le",
+		"list-tron-bo",
+		"winter",
+		"spring",
+		"jp",
+		"cn",
+	] {
+		assert!(
+			values.iter().any(|v| v == expected),
+			"missing shortcut {expected}"
+		);
+	}
+}
+
+#[komorei_test]
+fn catalogue_links_cover_listings_and_boards() {
+	use komorei::{HomeComponentValue, LinkValue};
+	let layout = crate::home::from_document(&doc(HOME));
+	let HomeComponentValue::Links(links) = &layout.components.last().unwrap().value else {
+		panic!("last component must be the catalogue strip");
+	};
+	let ids: Vec<&str> = links
+		.iter()
+		.filter_map(|l| match &l.value {
+			Some(LinkValue::Listing(listing)) => Some(listing.id.as_str()),
+			_ => None,
+		})
+		.collect();
+	assert!(ids.contains(&"anime-moi/"));
+	assert!(ids.contains(&"bang-xep-hang/voted.html"));
+	// `week` is not one of the site's boards, so nothing may link to it.
+	assert!(!ids.iter().any(|id| id.contains("week")));
 }

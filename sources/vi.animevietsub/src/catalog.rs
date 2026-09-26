@@ -7,6 +7,14 @@
 //! [`crate::parsers::parse_filters`], because the site changes them (it already
 //! carries a `None found, add some` studio and a `None` rating bucket).
 
+/// This crate's source id, exactly as it appears in `res/source.json`.
+///
+/// Every [`Anime`](komorei::Anime) this source builds must carry it: the app
+/// looks the runner up by `sourceId` before every call, so a card without one
+/// fails with "No .krx registered for source " and the title silently stays a
+/// bare Lite card.
+pub const SOURCE_ID: &str = "vi.animevietsub";
+
 /// The current host, taken from the project's own domain-resolver payload
 /// (`transform.json`). The site is behind a rotating set of mirrors; the
 /// resolver is an app-level concern, so this source just ships the newest

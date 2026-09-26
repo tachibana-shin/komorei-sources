@@ -17,14 +17,14 @@ use alloc::{
 };
 
 use komorei::{
-	Anime, AnimeStatus, CategoryLink, Episode, Filter, FilterValue, Listing, ListingKind,
-	MultiSelectFilter, SelectFilter,
+	Anime, AnimeSeason, AnimeStatus, CategoryLink, Episode, Filter, FilterValue, Listing,
+	ListingKind, MultiSelectFilter, SelectFilter,
 	helpers::uri::encode_uri_component,
 	imports::html::{Document, Element},
 };
 
 use crate::catalog::{
-	CATEGORY_SLOTS, FILTER_GENRES, FILTER_TYPE, LISTINGS, RANKING_TYPES, SLOT_ANY,
+	CATEGORY_SLOTS, FILTER_GENRES, FILTER_TYPE, LISTINGS, RANKING_TYPES, SLOT_ANY, SOURCE_ID,
 };
 
 /// Cards are `.TPostMv` everywhere — the home rails, the category grids, the
@@ -33,10 +33,34 @@ pub const CARD: &str = ".TPostMv";
 /// The full ordered episode list lives on `/phim/{id}/xem-phim.html`; every
 /// episode anchor carries its own `data-id` and `data-hash`.
 pub const EPISODES: &str = "#list-server .list-episode .episode a";
+/// The episode widget itself, and its individual items — used to tell "the page
+/// has no episode list" apart from "the page is not what we asked for".
+pub const LIST_SERVER: &str = "#list-server";
+pub const EPISODE_ITEMS: &str = "#list-server li.episode";
 /// The filter panel, whose input names double as the `/danh-sach/` slots.
 pub const FILTER_PANEL: &str = "#filter";
 /// The ranking boards render `li.group` rows, not `.TPostMv` cards.
 pub const RANKING_ROW: &str = "li.group";
+
+/// Whether a page is Cloudflare's interstitial rather than the content asked
+/// for.
+///
+/// The managed challenge answers 200 with a near-empty body whose `<title>` is
+/// empty, so a status check alone is not enough. The app retries such a
+/// response through a WebView; this only reports that the shape was seen.
+pub fn looks_like_challenge(doc: &Document) -> bool {
+	let title_is_empty = doc
+		.select_first("title")
+		.and_then(|e| e.text())
+		.map(|t| collapse(&t).is_empty())
+		.unwrap_or(false);
+	let has_content = doc
+		.select("h1, .TPost, .TPostMv, #list-server")
+		.map(|l| l.size())
+		.unwrap_or(0)
+		> 0;
+	title_is_empty && !has_content
+}
 
 /// One grid card, as a Lite [`Anime`].
 ///
@@ -120,6 +144,7 @@ pub fn parse_card(element: &Element) -> Option<Anime> {
 
 	Some(Anime {
 		key,
+		source_id: SOURCE_ID.into(),
 		title,
 		cover,
 		rating,
@@ -290,6 +315,7 @@ pub fn parse_ranking(doc: &Document) -> Vec<Anime> {
 				};
 				Some(Anime {
 					key,
+					source_id: SOURCE_ID.into(),
 					title,
 					cover,
 					current_episode,
@@ -304,22 +330,28 @@ pub fn parse_ranking(doc: &Document) -> Vec<Anime> {
 
 /// One title's metadata, read from its detail page.
 ///
-/// The detail page carries nearly everything in `<meta>` tags rather than in
-/// markup: the synopsis is `meta[name=description]`, prefixed with the episode
-/// it describes, and the artwork is `og:image` plus a `.TPostBg` banner.
+/// The page is an `article.TPost.Single`: its `<header>` carries `h1.Title`,
+/// `h2.SubTitle` and the `.Image` poster, and the two metadata columns
+/// (`.mvici-left` / `.mvici-right`) are `.InfoList` blocks of `.AAIco-adjust`
+/// rows whose leading `<strong>` is the label (`Đạo diễn:`, `Quốc gia:`,
+/// `Studio:`, …). Fields are therefore found **by label**, not by position —
+/// the rows come and go as the site adds metadata.
 pub fn parse_detail(doc: &Document) -> Anime {
 	let title = doc
-		.select_first("h1")
+		.select_first("h1.Title")
+		.or_else(|| doc.select_first("h1"))
 		.and_then(|e| e.text())
 		.map(|t| collapse(&t))
 		.filter(|t| !t.is_empty())
 		.unwrap_or_default();
 
-	let description = doc
-		.select_first("meta[name=description]")
-		.and_then(|e| e.attr("content"))
-		.map(|t| strip_episode_marker(&collapse(&t)))
-		.filter(|t| !t.is_empty());
+	// The romaji/Japanese title, often several comma-separated aliases.
+	let original_title = doc
+		.select_first("h2.SubTitle")
+		.and_then(|e| e.text())
+		.map(|t| collapse(&t))
+		.filter(|t| !t.is_empty())
+		.unwrap_or_default();
 
 	let og_image = doc
 		.select_first("meta[property=og:image]")
@@ -330,7 +362,12 @@ pub fn parse_detail(doc: &Document) -> Anime {
 		.select_first(".Image img")
 		.and_then(|e| e.attr("src"))
 		.filter(|s| !s.is_empty())
+		.or_else(|| {
+			doc.select_first("figure.Objf img")
+				.and_then(|e| e.attr("src"))
+		})
 		.or_else(|| og_image.clone())
+		.map(|s| absolute(&s))
 		.unwrap_or_default();
 
 	let banner = doc
@@ -340,10 +377,49 @@ pub fn parse_detail(doc: &Document) -> Anime {
 		.or(og_image)
 		.map(|s| absolute(&s));
 
+	let description = doc
+		.select_first(".Description")
+		.and_then(|e| e.text())
+		.map(|t| strip_episode_marker(&collapse(&t)))
+		.filter(|t| !t.is_empty());
+
+	// `#average_score` is the score itself; `.num-rating` is how many rated it.
 	let rating = doc
-		.select_first(".anime-avg-user-rating")
+		.select_first("#average_score")
+		.or_else(|| doc.select_first(".anime-avg-user-rating"))
 		.and_then(|e| e.text())
 		.and_then(|t| parse_rating(&t));
+	let rating_count = doc
+		.select_first(".num-rating")
+		.and_then(|e| e.text())
+		.and_then(|t| first_number(&t));
+
+	// `809,991 Lượt Xem`
+	let views = doc
+		.select_first(".AAIco-remove_red_eye")
+		.and_then(|e| e.text())
+		.map(|t| parse_count(&t))
+		.unwrap_or(0);
+
+	// `.AAIco-access_time` reads `11/12`; an ongoing title shows `24/??`.
+	let (current, total) = doc
+		.select_first(".AAIco-access_time")
+		.and_then(|e| e.text())
+		.map(|t| split_progress(&t))
+		.unwrap_or((None, None));
+
+	// `current_episode` is rendered by the app as `Cập nhật tới tập %1$s`, so it
+	// carries the bare progress — `22/24` — not a `Tập 22` label. (Cards use the
+	// `Tập N` form instead, because there the field *is* the whole label.)
+	let progress_label = match (current, total) {
+		(Some(number), Some(total)) => Some(format!(
+			"{}/{}",
+			normalise_number(&format!("{number}")),
+			total
+		)),
+		(Some(number), None) => Some(normalise_number(&format!("{number}"))),
+		(None, _) => None,
+	};
 
 	let quality_tag = doc
 		.select_first(".Qlty")
@@ -351,25 +427,190 @@ pub fn parse_detail(doc: &Document) -> Anime {
 		.map(|t| collapse(&t))
 		.filter(|t| !t.is_empty());
 
-	// `.AAIco-access_time` reads `11/12` — how far the title has aired.
-	let progress = doc
-		.select_first(".AAIco-access_time")
-		.and_then(|e| e.text())
-		.map(|t| split_progress(&t))
-		.unwrap_or((None, None));
+	// The year link points at `/danh-sach/all/all/all/2026`, so its text *is* the
+	// `year` slot value and tapping it re-runs the catalogue filtered by year.
+	let release_year = doc
+		.select_first(".AAIco-date_range a")
+		.and_then(|a| a.text().or_else(|| a.attr("title")))
+		.map(|t| collapse(&t))
+		.and_then(|t| first_number(&t))
+		.map(|year| CategoryLink {
+			name: year.to_string(),
+			filters: alloc::vec![FilterValue::Select {
+				id: String::from("year"),
+				value: year.to_string(),
+			}],
+		});
+
+	// Genres live in the schema.org breadcrumb. Only the `/the-loai/` entries
+	// are genres — the trail also names the section and the title itself.
+	let mut genres: Vec<CategoryLink> = doc
+		.select("ol[itemprop=breadcrumb] li a")
+		.map(|list| {
+			list.filter_map(|a| {
+				let href = a.attr("href")?;
+				if !path_of(&href).starts_with("/the-loai/") {
+					return None;
+				}
+				let name = a.text().map(|t| collapse(&t)).filter(|t| !t.is_empty())?;
+				Some(CategoryLink {
+					name,
+					filters: Vec::new(),
+				})
+			})
+			.collect()
+		})
+		.unwrap_or_default();
+
+	let left = InfoList::in_column(doc, "mvici-left");
+	let right = InfoList::in_column(doc, "mvici-right");
+
+	// Some pages carry no breadcrumb and list the genres in the left column
+	// instead, so fall back to that rather than showing none.
+	if genres.is_empty() {
+		genres = left.plain_links("thể loại");
+	}
+
+	let authors = left.plain_links("đạo diễn");
+	let countries = left.plain_links("quốc gia");
+
+	// Only `studio` maps onto a slot the catalogue understands: the link is
+	// `/studio/CloverWorks.html`, whose last segment is exactly the `studio`
+	// slot's value. The other links lead to their own landing pages, so they
+	// stay plain labels.
+	let studio = right
+		.filtered_links("studio", "studio")
+		.into_iter()
+		.next()
+		.map(|(name, filters)| CategoryLink { name, filters });
+	let season_of = right.plain_links("season").into_iter().next();
+
+	// Franchise parts: `.season_item > a` links the sibling seasons.
+	let seasons: Vec<AnimeSeason> = doc
+		.select(".season_item > a")
+		.map(|list| {
+			list.filter_map(|a| {
+				let href = a.attr("href")?;
+				let anime_id = anime_key_of(&href)?.to_string();
+				let title = a.text().map(|t| collapse(&t)).filter(|t| !t.is_empty())?;
+				Some(AnimeSeason {
+					id: anime_id.clone(),
+					title,
+					anime_id,
+				})
+			})
+			.collect()
+		})
+		.unwrap_or_default();
 
 	Anime {
 		title,
-		cover: absolute(&cover),
+		source_id: SOURCE_ID.into(),
+		original_title,
+		cover,
 		banner,
 		description,
 		rating,
+		rating_count,
+		views,
+		episode_count: total.unwrap_or(0),
+		current_episode: progress_label,
+		release_year,
+		genres,
+		authors,
+		studio,
+		season_of,
+		countries,
+		seasons,
 		quality_tag,
-		episode_count: progress.1.unwrap_or(0),
-		current_episode: progress
-			.0
-			.map(|n| format!("Tập {}", normalise_number(&format!("{n}")))),
 		..Default::default()
+	}
+}
+
+/// The labelled `.InfoList` rows of one metadata column.
+struct InfoList {
+	rows: Vec<(String, Element)>,
+}
+
+impl InfoList {
+	/// Every `.AAIco-adjust` row of a column, paired with its `<strong>` label —
+	/// lower-cased and stripped of its trailing colon.
+	fn in_column(doc: &Document, column: &str) -> Self {
+		let rows = doc
+			.select(format!(".{column} .InfoList .AAIco-adjust"))
+			.map(|list| {
+				list.filter_map(|row| {
+					let label = row
+						.select_first("strong")
+						.and_then(|e| e.text())
+						.map(|t| collapse(&t).to_lowercase())
+						.map(|t| t.trim_end_matches(':').trim().to_string())?;
+					Some((label, row))
+				})
+				.collect()
+			})
+			.unwrap_or_default();
+		Self { rows }
+	}
+
+	/// The anchors of the row whose label starts with `prefix`, as
+	/// (text, last path segment).
+	fn links(&self, prefix: &str) -> Vec<(String, String)> {
+		let Some((_, row)) = self
+			.rows
+			.iter()
+			.find(|(label, _)| label.starts_with(prefix))
+		else {
+			return Vec::new();
+		};
+		row.select("a[href]")
+			.map(|list| {
+				list.filter_map(|a| {
+					let href = a.attr("href")?;
+					// A studio the site has not filled in yet reads `Đang Cập Nhật`;
+					// that is a placeholder, not a name, so it is dropped.
+					let name = a
+						.text()
+						.map(|t| studio_name(&collapse(&t)))
+						.filter(|n| !n.is_empty())?;
+					// `/studio/CloverWorks.html` -> `CloverWorks`
+					let segment = path_of(&href)
+						.trim_end_matches(".html")
+						.rsplit('/')
+						.find(|s| !s.is_empty())?
+						.to_string();
+					Some((name, segment))
+				})
+				.collect()
+			})
+			.unwrap_or_default()
+	}
+
+	/// The row's anchors as display-only category links.
+	fn plain_links(&self, prefix: &str) -> Vec<CategoryLink> {
+		self.links(prefix)
+			.into_iter()
+			.map(|(name, _)| CategoryLink {
+				name,
+				filters: Vec::new(),
+			})
+			.collect()
+	}
+
+	/// The row's anchors as filter links, applying `slot` as the filter id.
+	fn filtered_links(&self, prefix: &str, slot: &str) -> Vec<(String, Vec<FilterValue>)> {
+		self.links(prefix)
+			.into_iter()
+			.map(|(name, value)| {
+				(
+					name,
+					alloc::vec![FilterValue::Select {
+						id: String::from(slot),
+						value,
+					}],
+				)
+			})
+			.collect()
 	}
 }
 
