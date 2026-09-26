@@ -771,6 +771,8 @@ fn build_lite(m: &VsmovMovie, origin: &str) -> Anime {
 		seasons: Vec::new(),
 		episodes: None,
 		url: Some(format!("{origin}/phim/{}", m.slug)),
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	}
 }
 
@@ -830,6 +832,8 @@ fn build_full(m: &VsmovMovie, slug: &str, origin: &str) -> Anime {
 		seasons,
 		episodes: None,
 		url: Some(format!("{origin}/phim/{slug}")),
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	}
 }
 

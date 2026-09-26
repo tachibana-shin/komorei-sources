@@ -655,6 +655,8 @@ fn build_anime(entry: &Entry) -> Anime {
 			.collect(),
 		episodes: None,
 		url: Some(String::from(entry.source_url)),
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	}
 }
 

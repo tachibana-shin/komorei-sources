@@ -150,6 +150,8 @@ pub(crate) fn from_card(card: &Element, base: &str) -> Option<Anime> {
 		seasons: Vec::new(),
 		episodes: None,
 		url: Some(link_base(base, &path)),
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	})
 }
 
@@ -352,6 +354,8 @@ fn anime_lite(key: String, title: String) -> Anime {
 		seasons: Vec::new(),
 		episodes: None,
 		url: None,
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	}
 }
 
@@ -429,6 +433,8 @@ pub(crate) fn build_full(base: &str, key: &str, info: DetailInfo) -> Anime {
 		seasons,
 		episodes: None,
 		url: Some(format!("{base}/{key}.html")),
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	}
 }
 

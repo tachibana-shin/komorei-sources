@@ -620,6 +620,8 @@ fn build_lite(m: &NguoncMovie, base: &str) -> Anime {
 		seasons: Vec::new(),
 		episodes: None,
 		url: Some(format!("{base}/phim/{}", m.slug)),
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	}
 }
 
@@ -700,6 +702,8 @@ fn build_full(base: &str, m: &NguoncMovie, slug: &str) -> Anime {
 		seasons,
 		episodes: None,
 		url: Some(format!("{base}/phim/{slug}")),
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	}
 }
 

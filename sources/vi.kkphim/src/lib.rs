@@ -520,6 +520,8 @@ fn parse_list_row(row: &Element, base: &str) -> Option<Anime> {
 		seasons: Vec::new(),
 		episodes: None,
 		url: Some(format!("{base}/phim/{slug}")),
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	})
 }
 
@@ -708,6 +710,8 @@ fn lite_from_search(item: &SearchItem, base: &str) -> Anime {
 		seasons: Vec::new(),
 		episodes: None,
 		url: item.url.as_ref().map(|u| absolutize_url(u, base)),
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	}
 }
 
@@ -760,6 +764,8 @@ fn build_full(info: &DetailInfo, base: &str, slug: &str) -> Anime {
 		seasons,
 		episodes: None,
 		url: Some(format!("{base}/phim/{slug}")),
+		// No source-defined extras yet; see the SDK `Anime::extra`.
+		extra: Default::default(),
 	}
 }
 
