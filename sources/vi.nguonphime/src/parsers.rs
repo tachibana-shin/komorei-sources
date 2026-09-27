@@ -57,6 +57,7 @@ pub(crate) fn extract_playlist(html: &str) -> Option<Vec<PlaylistEntry>> {
 			j += 1;
 		}
 		if token.len() >= 60
+			&& is_base64_token(&token)
 			&& let Some(raw) = base64::decode(&token)
 			&& raw.first() == Some(&b'[')
 			&& let Ok(entries) = serde_json::from_slice::<Vec<PlaylistEntry>>(&raw)
@@ -68,6 +69,30 @@ pub(crate) fn extract_playlist(html: &str) -> Option<Vec<PlaylistEntry>> {
 		i += 1;
 	}
 	None
+}
+
+/// Whether a `"…"` run can be a base64 token at all.
+///
+/// The scan above walks every quoted run in the page and uses the decoder as its
+/// filter, which only works while the decoder is *strict*: a strict decoder
+/// rejects everything that is not a well-formed token, so the first one that
+/// decodes to a playlist really is the playlist.
+///
+/// The runner's `base64::decode` implements the WHATWG forgiving-base64 decode
+/// that a browser's `atob` does, and `atob` is deliberately more permissive than
+/// any strict decoder — it strips ASCII whitespace, accepts missing or surplus
+/// `=`, and discards non-zero trailing bits. That is the right behaviour for
+/// decoding a blob the page told us to decode, and the wrong behaviour for
+/// rejecting everything else on the page: a quoted run holding a space, a
+/// newline or stray `=` now decodes too, so a decoy elsewhere in the document can
+/// win the race and be returned as the playlist.
+///
+/// So decide token-ness here, where it is a property of the text, instead of
+/// inferring it from whether a decode happened to succeed. A run carrying
+/// whitespace or punctuation is not a base64 token, full stop.
+fn is_base64_token(token: &str) -> bool {
+	!token.is_empty()
+		&& token.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'=')
 }
 
 /// Parse a listing/grid card (`.item-file-index`) into a Lite anime.

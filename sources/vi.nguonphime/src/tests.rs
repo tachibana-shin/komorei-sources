@@ -130,9 +130,21 @@ fn base64_import_roundtrips_standard_and_padded() {
 	assert_eq!(base64::decode("TWE=").as_deref(), Some(&b"Ma"[..]));
 	assert_eq!(base64::decode("TQ==").as_deref(), Some(&b"M"[..]));
 	assert_eq!(base64::decode("aGVsbG8=").as_deref(), Some(&b"hello"[..]));
-	// invalid chars / bad length → None
+	// It implements the WHATWG forgiving-base64 decode that a browser's `atob`
+	// implements, so it is more permissive than a strict decoder in four ways:
+	// ASCII whitespace is stripped, missing padding is fine, surplus padding is
+	// fine, and non-zero trailing bits are discarded. Every site-side grab script
+	// the sources mirror is written against `atob`, so a source that decoded
+	// something the site's own `atob` accepts used to fail here and work there.
+	assert_eq!(base64::decode("TQ=").as_deref(), Some(&b"M"[..]));
+	assert_eq!(base64::decode("TQ===").as_deref(), Some(&b"M"[..]));
+	assert_eq!(base64::decode("TWFu\n").as_deref(), Some(&b"Man"[..]));
+	assert_eq!(base64::decode("TW\nFu").as_deref(), Some(&b"Man"[..]));
+	// What `atob` still rejects: a bad character, a length of 4n+1, and a `=`
+	// that is not part of the trailing run.
 	assert!(base64::decode("he!!o").is_none());
-	assert!(base64::decode("TQ=").is_none());
+	assert!(base64::decode("TWFuT").is_none());
+	assert!(base64::decode("TW=F").is_none());
 	// encode round-trips standard-with-padding
 	assert_eq!(base64::encode(b"KomORei"), "S29tT1JlaQ==");
 }
@@ -155,6 +167,30 @@ fn playlist_entry_carries_token_and_stream_url() {
 	assert_eq!(
 		entries[0].stream_url.as_deref(),
 		Some("https://nguonstream.top/key")
+	);
+}
+
+#[komorei_test]
+fn a_line_wrapped_decoy_does_not_win_the_scan() {
+	// The scan returns the FIRST quoted run that decodes to a playlist, and it
+	// relies on the decoder to tell a token from everything else on the page.
+	// The runner's `base64::decode` follows the WHATWG forgiving-base64 decode a
+	// browser's `atob` implements, which strips ASCII whitespace — so a run split
+	// across a line concatenates back into a valid token and decodes.
+	//
+	// This is that decoy, placed ahead of the real one. It is a perfectly good
+	// playlist JSON, base64, just wrapped — and it must lose. Deciding token-ness
+	// from the text (see `is_base64_token`) is what keeps it from winning.
+	let wrapped = concat!(
+		"var vdecoy = \"W3siZmlsZSI6Imh0dHBzOi8vZGVjb3kuZXhhbXBsZS9zdHJlYW\n",
+		"0ubTN1OCIsImxhYmVsIjoiZGVjb3kiLCJ0eXBlIjoiaGxzIn1d\";\n"
+	);
+	let html = alloc::format!("<script>{wrapped}</script>{GRAB_HTML}");
+
+	let entries = extract_playlist(&html).expect("the real playlist still decodes");
+	assert_eq!(
+		entries[0].file, "https://a.kvp726.com/20260921/miepaCtU/index.m3u8",
+		"a wrapped decoy ahead of the real token must not be returned"
 	);
 }
 
