@@ -7,7 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-komorei = { path = "../../../komorei-sdk/crates/lib", features = ["json"] }
+komorei = { git = "https://github.com/tachibana-shin/komorei-sdk", branch = "main", package = "komorei", features = ["json"] }
 # Direct dep because serde's derive macro expands to `::serde` paths.
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
 # JSON bodies for the stream bootstrap/issue POSTs are built with the `json!`
@@ -15,8 +15,8 @@ serde = { version = "1.0", default-features = false, features = ["alloc", "deriv
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
-komorei = { path = "../../../komorei-sdk/crates/lib", features = ["test"] }
-komorei-test = { path = "../../../komorei-sdk/crates/test-macro" }
+komorei = { git = "https://github.com/tachibana-shin/komorei-sdk", branch = "main", package = "komorei", features = ["test"] }
+komorei-test = { git = "https://github.com/tachibana-shin/komorei-sdk", branch = "main", package = "komorei-test" }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [profile.dev]

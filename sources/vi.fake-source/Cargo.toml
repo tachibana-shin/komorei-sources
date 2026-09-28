@@ -7,11 +7,11 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-komorei = { path = "../../../komorei-sdk/crates/lib" }
+komorei = { git = "https://github.com/tachibana-shin/komorei-sdk", branch = "main", package = "komorei" }
 
 [dev-dependencies]
-komorei = { path = "../../../komorei-sdk/crates/lib", features = ["test"] }
-komorei-test = { path = "../../../komorei-sdk/crates/test-macro" }
+komorei = { git = "https://github.com/tachibana-shin/komorei-sdk", branch = "main", package = "komorei", features = ["test"] }
+komorei-test = { git = "https://github.com/tachibana-shin/komorei-sdk", branch = "main", package = "komorei-test" }
 
 [profile.dev]
 panic = "abort"

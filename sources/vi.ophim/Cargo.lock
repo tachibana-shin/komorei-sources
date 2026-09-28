@@ -122,6 +122,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 [[package]]
 name = "komorei"
 version = "0.3.0"
+source = "git+https://github.com/tachibana-shin/komorei-sdk?branch=main#cfdc56c1f94d4af2c3d9cfd827d05f6dbbbde21d"
 dependencies = [
  "euclid",
  "hashbrown",
@@ -138,6 +139,7 @@ dependencies = [
 [[package]]
 name = "komorei-test"
 version = "1.0.0"
+source = "git+https://github.com/tachibana-shin/komorei-sdk?branch=main#cfdc56c1f94d4af2c3d9cfd827d05f6dbbbde21d"
 dependencies = [
  "quote",
  "syn 2.0.119",
