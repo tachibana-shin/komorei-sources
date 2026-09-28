@@ -1,0 +1,3 @@
+[submodule "sources/vi.animevietsub"]
+	path = sources/vi.animevietsub
+	url = https://github.com/tachibana-shin/komorei-animevietsub.git
