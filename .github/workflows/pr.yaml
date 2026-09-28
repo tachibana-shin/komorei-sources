@@ -18,10 +18,14 @@ jobs:
       # vi.animevietsub is a submodule into a private repository, so linting and
       # testing it needs a token that can read it. Nothing is published here, and
       # CI logs do not contain the source itself.
+      # Guarded on the secret existing: this repository is public, so a pull
+      # request from a fork runs without secrets and a 404 on the private
+      # submodule would fail the job for a reason unrelated to the change. The
+      # public sources are still linted and tested; vi.animevietsub is not.
       - uses: actions/checkout@v7
         with:
-          token: ${{ secrets.PAT_TOKEN }}
-          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN || '' }}
+          submodules: ${{ secrets.PAT_TOKEN != '' }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -46,10 +50,14 @@ jobs:
       # vi.animevietsub is a submodule into a private repository, so linting and
       # testing it needs a token that can read it. Nothing is published here, and
       # CI logs do not contain the source itself.
+      # Guarded on the secret existing: this repository is public, so a pull
+      # request from a fork runs without secrets and a 404 on the private
+      # submodule would fail the job for a reason unrelated to the change. The
+      # public sources are still linted and tested; vi.animevietsub is not.
       - uses: actions/checkout@v7
         with:
-          token: ${{ secrets.PAT_TOKEN }}
-          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN || '' }}
+          submodules: ${{ secrets.PAT_TOKEN != '' }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
