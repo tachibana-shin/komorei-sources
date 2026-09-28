@@ -34,9 +34,15 @@ jobs:
       # PAT_TOKEN.
       - name: Check out repository
         uses: actions/checkout@v7
+        # Guarded on the secret existing. This repository is public, so a pull
+        # request from a fork gets no secrets; without the guard the checkout
+        # would fail on a 404 rather than on anything the contributor did. The
+        # build then proceeds with the public sources and simply leaves
+        # vi.animevietsub out, because `komorei repo build` skips an empty source
+        # directory instead of failing.
         with:
-          token: ${{ secrets.PAT_TOKEN }}
-          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN || '' }}
+          submodules: ${{ secrets.PAT_TOKEN != '' }}
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
