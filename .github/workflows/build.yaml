@@ -20,8 +20,23 @@ jobs:
     name: Build source list
     runs-on: ubuntu-latest
     steps:
+      # `submodules: recursive` so vi.animevietsub is built and published like
+      # every other source, even though its repository is private.
+      #
+      # That asymmetry is the point: the .krx is a public artifact the app
+      # downloads and every user can already obtain from this Pages site, and
+      # withholding it would be withholding a released source, not protecting
+      # anything. What stays private is the implementation — so it cannot be read,
+      # forked or repackaged into a modified source, which is what publishing a
+      # `.krx` does not permit anyway.
+      #
+      # Needs a token because the submodule lives in a private repository; see
+      # PAT_TOKEN.
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          submodules: recursive
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6

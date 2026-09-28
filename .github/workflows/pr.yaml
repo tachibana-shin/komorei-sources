@@ -15,7 +15,13 @@ jobs:
     name: Verify sources
     runs-on: ubuntu-latest
     steps:
+      # vi.animevietsub is a submodule into a private repository, so linting and
+      # testing it needs a token that can read it. Nothing is published here, and
+      # CI logs do not contain the source itself.
       - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -37,7 +43,13 @@ jobs:
     name: Rust formatting and Clippy
     runs-on: ubuntu-latest
     steps:
+      # vi.animevietsub is a submodule into a private repository, so linting and
+      # testing it needs a token that can read it. Nothing is published here, and
+      # CI logs do not contain the source itself.
       - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
         with:
